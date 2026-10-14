@@ -407,7 +407,14 @@ export class InstanceController {
     };
   }
 
-  public async fetchInstances({ instanceName, instanceId, number }: InstanceDto, key: string) {
+  public async fetchInstances(params: InstanceDto, key: string) {
+    const instances = await this.findInstances(params, key);
+    if (this.configService.get<Auth>('AUTHENTICATION').EXPOSE_IN_FETCH_INSTANCES) return instances;
+    // Cópias: não altera o que o monitor devolveu.
+    return instances.map((instance) => ({ ...instance, token: undefined }));
+  }
+
+  private async findInstances({ instanceName, instanceId, number }: InstanceDto, key: string): Promise<any[]> {
     const env = this.configService.get<Auth>('AUTHENTICATION').API_KEY;
 
     if (env.KEY !== key) {
