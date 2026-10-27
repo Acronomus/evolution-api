@@ -46,3 +46,6 @@ lerna-debug.log*
 .tool-versions
 
 /prisma/migrations/*
+
+# Rotas atingidas pela suíte de integração (scripts/check-route-coverage.mjs)
+/.route-coverage
