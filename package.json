@@ -9,7 +9,11 @@
     "start": "tsx ./src/main.ts",
     "start:prod": "node dist/main",
     "dev:server": "tsx watch ./src/main.ts",
-    "test": "tsx watch ./test/all.test.ts",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:routes": "node scripts/check-route-coverage.mjs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "lint": "eslint --fix --ext .ts src",
     "lint:check": "eslint --ext .ts src",
     "commit": "cz",
@@ -130,6 +134,8 @@
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",
+    "@testcontainers/postgresql": "^12.2.1",
+    "@testcontainers/redis": "^12.2.1",
     "@types/compression": "^1.7.5",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.18",
@@ -140,6 +146,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/qrcode": "^1.5.5",
     "@types/qrcode-terminal": "^0.12.2",
+    "@types/supertest": "^7.2.1",
     "@typescript-eslint/eslint-plugin": "^8.44.0",
     "@typescript-eslint/parser": "^8.44.0",
     "commitizen": "^4.3.1",
@@ -151,10 +158,14 @@
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.6",
+    "nock": "^14.0.17",
     "patch-package": "^8.0.1",
     "prettier": "^3.4.2",
+    "supertest": "^7.3.1",
+    "testcontainers": "^12.2.1",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.20.5",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.12"
   }
 }

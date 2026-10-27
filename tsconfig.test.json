@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@api/*": ["./src/api/*"],
+      "@cache/*": ["./src/cache/*"],
+      "@config/*": ["./src/config/*"],
+      "@exceptions": ["./src/exceptions"],
+      "@libs/*": ["./src/libs/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@validate/*": ["./src/validate/*"],
+      "@tests/*": ["./tests/*"]
+    }
+  },
+  "include": ["src/@types/**/*", "tests/**/*.ts", "vitest.config.mts"],
+  "exclude": ["node_modules", "dist"]
+}

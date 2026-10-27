@@ -1,5 +1,75 @@
 # CLAUDE.md
 
+## Build próprio da Acronomus (leia primeiro)
+
+Este fork tem dois papéis. O `main` espelha o upstream (EvolutionAPI) e não é mexido aqui. O branch
+**`2.3.7-baileys-rc14`** é o build que roda em produção: 2.3.7 do upstream + baileys rc14 + as
+correções da Acronomus (os commits depois de `2.3.7`) + `patches/` (patch-package). Todo trabalho
+vai em PR **para `2.3.7-baileys-rc14`**, nunca para o `main` nem direto no branch: o push nele
+publica a imagem no GHCR (`build-image.yml`). Merge só com o Miguel.
+
+### Testes: toda mudança vem com teste
+
+O CI (`.github/workflows/ci.yml`) roda no runner do GitHub (`ubuntu-latest`; o repo é público e os runners próprios da org não atendem repo público) em todo PR e push para
+`2.3.7-baileys-rc14`. O security-bot só faz merge automático com ele verde; ninguém mais bloqueia
+(o plano da org não tem proteção de branch). Os mesmos passos rodam localmente:
+
+```bash
+DATABASE_PROVIDER=postgresql npm run db:generate
+npm run lint:check
+npm run typecheck          # app e testes
+npm run test:unit          # Vitest, sem banco nem rede
+npm run test:integration   # Postgres e Redis reais em containers (precisa de Docker)
+npm run test:routes        # toda rota do app tem teste de integração
+npm run build && docker build -t evolution-api-local .
+```
+
+Vitest, não Jest: a baileys 7 é ESM puro. Pelo mesmo motivo o `tsx` não carrega a baileys
+(`npm start` e `npm run dev:server` quebram com `ERR_PACKAGE_PATH_NOT_EXPORTED`); use
+`npm run build && npm run start:prod`.
+
+Regras:
+
+- **Rota nova ou alterada → teste em `tests/integration/`** com `api()` e `GLOBAL_KEY`
+  (`helpers/app.ts`) e as instâncias de `helpers/instances.ts`. Cubra o caminho feliz, a
+  autenticação (sem chave, token de outra instância) e o isolamento entre instâncias.
+- **`tests/integration/routes-pending.txt` só diminui.** Rota nova não entra nela: escreva o teste.
+  Ao cobrir uma rota da lista, tire a linha (o `test:routes` avisa).
+- **Mudança de comportamento → atualize o teste que descreve o comportamento antigo.** Não apague
+  nem pule (`.skip`) teste que falhou sem entender por quê. `it.fails` marca bug conhecido: quando
+  o bug for corrigido o teste falha, e aí ele vira `it`.
+- **A baileys nunca conecta nos testes.** O `makeWASocket` é trocado por `helpers/fakeBaileys.ts`,
+  que usa o event buffer real da baileys; o teste dirige o socket (`open()`, `end()`,
+  `ev.emit('messages.upsert', ...)`) e confere as chamadas (`sendMessage`, `readMessages`...).
+- **Nada de rede nos testes.** O nock recusa HTTP/fetch para fora e o setup bloqueia sockets TCP
+  para fora da máquina. Provedor externo entra com resposta montada no teste, marcada como não
+  confirmada; não grave resposta real de provedor sem o Miguel aprovar (e anonimizar).
+- **Nada de `.env` real nos testes**: `tests/setup.ts` desliga o `dotenv` e `tests/testEnv.ts` fixa
+  as variáveis. Variável nova no `env.config.ts` que precise de valor nos testes entra lá.
+- **Mudou a correção de um commit do build próprio? O teste dela está em `tests/`** (o comentário no
+  topo de cada arquivo cita o commit).
+
+### Banco e migrations
+
+- O deploy roda `npm run db:deploy` (Docker/scripts/deploy_database.sh): copia
+  `prisma/postgresql-migrations` para `prisma/migrations` e aplica. Os testes criam o banco do zero
+  do mesmo jeito.
+- Mudança de schema vira migration em `prisma/postgresql-migrations` (`npm run db:migrate:dev`);
+  **nunca `prisma db push`**. `tests/integration/schema.test.ts` falha se
+  `prisma/postgresql-schema.prisma` e as migrations divergirem.
+- Só o Postgres é testado. `mysql-*` e `psql_bouncer-schema.prisma` vêm do upstream e não são
+  usados em produção.
+
+### Dependências
+
+- `patches/baileys+<versão>.patch` é aplicado no `postinstall`. Subir a baileys faz o
+  `patch-package` falhar de propósito (e o `tests/unit/baileys-patch.test.ts` também): reavalie o
+  patch antes de forçar. Veja `patches/README.md`.
+- Lockfile: regere com `npm install --package-lock-only` e confira com `npm ci`; `npm install` com
+  `node_modules` presente perde os binários opcionais de outras plataformas.
+
+---
+
 This file provides comprehensive guidance to Claude AI when working with the Evolution API codebase.
 
 ## Project Overview
@@ -59,7 +129,7 @@ npm run db:migrate:dev:win  # Windows
 
 ### Testing
 ```bash
-npm test    # Run tests with watch mode
+npm test    # Vitest: unit + integration (see the top of this file)
 ```
 
 ## Architecture Overview
@@ -201,18 +271,7 @@ The project follows comprehensive development standards defined in `.cursor/rule
 
 ## Testing Approach
 
-Currently, the project has minimal formal testing infrastructure:
-- **Manual testing** is the primary approach
-- **Integration testing** in development environment
-- **No unit test suite** currently implemented
-- Test files can be placed in `test/` directory as `*.test.ts`
-- Run `npm test` for watch mode development testing
-
-### Recommended Testing Strategy
-- Focus on **critical business logic** in services
-- **Mock external dependencies** (WhatsApp APIs, databases)
-- **Integration tests** for API endpoints
-- **Manual testing** for WhatsApp connection flows
+See "Testes: toda mudança vem com teste" at the top of this file (Vitest, `tests/`).
 
 ## Deployment Considerations
 
