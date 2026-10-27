@@ -1,0 +1,70 @@
+name: CI
+
+# Build próprio da Acronomus (branch 2.3.7-baileys-rc14). O `main` deste fork
+# espelha o upstream e não roda este CI.
+#
+# Roda no runner próprio (container LXD `runners` no servidor acronomus), que tem
+# Docker: a suíte de integração sobe Postgres e Redis com Testcontainers, e o
+# `docker build` confere a imagem que o deploy usa. O security-bot só faz merge
+# automático com este workflow verde.
+on:
+  pull_request:
+    branches: ['2.3.7-baileys-rc14']
+  push:
+    branches: ['2.3.7-baileys-rc14']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 20
+    env:
+      DATABASE_PROVIDER: postgresql
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      # Com scripts: o postinstall aplica patches/ (patch-package) na baileys.
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Gerar o Prisma Client
+        run: npm run db:generate
+
+      - name: Lint
+        run: npm run lint:check
+
+      - name: Checar tipos (app e testes)
+        run: npm run typecheck
+
+      - name: Testes de unidade
+        run: npm run test:unit
+
+      - name: Testes de integração (Postgres e Redis em containers)
+        run: npm run test:integration
+
+      - name: Toda rota tem teste
+        run: npm run test:routes
+
+      - name: Build
+        run: npm run build
+
+      - name: Docker build (o deploy usa ele)
+        run: docker build -t evolution-api-ci:${{ github.run_id }} .
+
+      - name: Apagar a imagem do CI
+        if: always()
+        run: docker image rm -f evolution-api-ci:${{ github.run_id }} || true
