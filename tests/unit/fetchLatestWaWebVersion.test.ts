@@ -5,7 +5,7 @@
  */
 import axios from 'axios';
 import nock from 'nock';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Corpo montado à mão (JavaScript, como o sw.js), só com o trecho que o regex lê.
 const SW_JS = 'self.__d={"client_revision":1012345678,"x":1};';
@@ -14,6 +14,11 @@ const load = async () => {
   vi.resetModules();
   return (await import('@utils/fetchLatestWaWebVersion')).fetchLatestWaWebVersion;
 };
+
+// O primeiro import da baileys é lento; fora do tempo dos testes.
+beforeAll(async () => {
+  await import('baileys');
+}, 60_000);
 
 beforeEach(() => {
   nock.disableNetConnect();
