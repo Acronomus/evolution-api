@@ -23,7 +23,9 @@ concurrency:
 
 jobs:
   test:
-    runs-on: [self-hosted, linux]
+    # Repo público: runner do GitHub (gratuito aqui). O grupo de runners próprios da org não atende
+    # repo público de propósito, porque PR de fork rodaria código no nosso servidor.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       DATABASE_PROVIDER: postgresql

@@ -10,7 +10,7 @@ publica a imagem no GHCR (`build-image.yml`). Merge só com o Miguel.
 
 ### Testes: toda mudança vem com teste
 
-O CI (`.github/workflows/ci.yml`) roda no runner próprio em todo PR e push para
+O CI (`.github/workflows/ci.yml`) roda no runner do GitHub (`ubuntu-latest`; o repo é público e os runners próprios da org não atendem repo público) em todo PR e push para
 `2.3.7-baileys-rc14`. O security-bot só faz merge automático com ele verde; ninguém mais bloqueia
 (o plano da org não tem proteção de branch). Os mesmos passos rodam localmente:
 
