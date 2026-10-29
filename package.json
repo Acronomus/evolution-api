@@ -167,5 +167,32 @@
     "tsx": "^4.20.5",
     "typescript": "^5.7.2",
     "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "@figuro/chatwoot-sdk": {
+      "axios": "0.34.0"
+    },
+    "body-parser": "1.20.9",
+    "brace-expansion@1": "1.1.21",
+    "brace-expansion@5": "5.0.12",
+    "query-string": {
+      "decode-uri-component": "0.5.0"
+    },
+    "deepmerge-ts": "8.0.0",
+    "engine.io": "6.6.10",
+    "esbuild": "0.28.1",
+    "fast-uri": "3.1.9",
+    "follow-redirects": "1.16.1",
+    "ip-address": "10.7.4",
+    "js-yaml": "4.3.2",
+    "music-metadata": "11.16.0",
+    "proxy-addr": "2.0.8",
+    "qs": "6.16.1",
+    "minio": {
+      "stream-json": "3.6.0"
+    },
+    "node-cron": {
+      "uuid": "11.1.1"
+    }
   }
 }
