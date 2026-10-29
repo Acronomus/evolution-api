@@ -83,7 +83,7 @@
     "audio-decode": "^2.2.3",
     "axios": "^1.7.9",
     "baileys": "7.0.0-rc14",
-    "class-validator": "^0.14.1",
+    "class-validator": "^0.15.0",
     "compression": "^1.7.5",
     "cors": "^2.8.5",
     "dayjs": "^1.11.13",
