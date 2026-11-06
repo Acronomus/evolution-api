@@ -362,6 +362,17 @@ export type Telemetry = {
   URL?: string;
 };
 
+/** Servidor MCP em /mcp (build próprio da Acronomus). */
+export type Mcp = {
+  ENABLED: boolean;
+  /** Só registra as ferramentas de leitura. */
+  READ_ONLY: boolean;
+  /** Instâncias que o MCP nunca desconecta nem apaga. */
+  PROTECTED_INSTANCES: string[];
+  /** Mostra tokens e senhas nas respostas (padrão: mascarados). */
+  SHOW_SECRETS: boolean;
+};
+
 export type Proxy = {
   HOST?: string;
   PORT?: string;
@@ -423,6 +434,7 @@ export interface Env {
   AUTHENTICATION: Auth;
   METRICS: Metrics;
   TELEMETRY: Telemetry;
+  MCP: Mcp;
   PROXY: Proxy;
   AUDIO_CONVERTER: AudioConverter;
   FACEBOOK: Facebook;
@@ -880,6 +892,15 @@ export class ConfigService {
       TELEMETRY: {
         ENABLED: process.env?.TELEMETRY_ENABLED === undefined || process.env?.TELEMETRY_ENABLED === 'true',
         URL: process.env?.TELEMETRY_URL,
+      },
+      MCP: {
+        ENABLED: process.env?.MCP_ENABLED === 'true',
+        READ_ONLY: process.env?.MCP_READ_ONLY === 'true',
+        PROTECTED_INSTANCES: (process.env?.MCP_PROTECTED_INSTANCES ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        SHOW_SECRETS: process.env?.MCP_SHOW_SECRETS === 'true',
       },
       PROXY: {
         HOST: process.env?.PROXY_HOST,

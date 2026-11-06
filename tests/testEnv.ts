@@ -38,6 +38,8 @@ export const testEnv: Record<string, string> = {
   DEL_INSTANCE: 'false',
   TELEMETRY_ENABLED: 'false',
   PROMETHEUS_METRICS: 'false',
+  MCP_ENABLED: 'true',
+  MCP_PROTECTED_INSTANCES: 'protegida',
   SENTRY_DSN: '',
 
   // Endereço obviamente falso: o setup de integração troca pelo banco do container.

@@ -1,27 +1,24 @@
-// Testa o MCP inteiro (cliente MCP real ↔ servidor em memória) com a Evolution trocada por um
-// fetch falso. Nada de rede: as respostas abaixo são montadas a partir dos controllers do fork
-// (src/api/controllers, src/api/integrations), não gravadas de um servidor real.
+/**
+ * Ferramentas do MCP (src/api/mcp/mcp.tools.ts) com cliente MCP real ↔ servidor em memória e a
+ * API trocada por respostas montadas no teste. Nada de rede: os formatos vêm dos controllers do
+ * fork, não de um servidor real. O caminho HTTP de verdade está em tests/integration/mcp.test.ts.
+ */
+import { EvolutionClient, parseResponse } from '@api/mcp/mcp.client';
+import { MASK } from '@api/mcp/mcp.redact';
+import { createMcpServer, McpToolsOptions } from '@api/mcp/mcp.tools';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it } from 'vitest';
-
-import { loadConfig, type Config } from '../src/config.js';
-import { createEvolutionClient } from '../src/evolution.js';
-import { MASK } from '../src/redact.js';
-import { createServer } from '../src/server.js';
 
 type Call = { method: string; path: string; headers: Record<string, string>; body: any };
 type Route = (call: Call) => { status?: number; body: unknown } | undefined;
 
-const BASE = 'http://evolution.test';
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
-const baseConfig: Config = {
-  url: BASE,
-  apiKey: 'chave-global-teste',
-  mode: 'write',
+const baseConfig: McpToolsOptions = {
+  readOnly: false,
   protectedInstances: [],
   showSecrets: false,
-  timeoutMs: 1000,
+  globalKey: true,
 };
 
 let clients: Client[] = [];
@@ -30,27 +27,27 @@ afterEach(async () => {
   clients = [];
 });
 
-async function setup(routes: Record<string, Route | { status?: number; body: unknown }>, config: Partial<Config> = {}) {
+async function setup(
+  routes: Record<string, Route | { status?: number; body: unknown }>,
+  config: Partial<McpToolsOptions> = {},
+) {
   const calls: Call[] = [];
-  const fakeFetch = (async (url: string, init: RequestInit) => {
-    const u = new URL(url);
-    const call: Call = {
-      method: init.method ?? 'GET',
-      path: u.pathname + u.search,
-      headers: init.headers as Record<string, string>,
-      body: init.body ? JSON.parse(String(init.body)) : undefined,
-    };
-    calls.push(call);
-    const key = `${call.method} ${u.pathname}`;
-    const route = routes[key];
-    const res = typeof route === 'function' ? route(call) : route;
-    if (!res) return new Response(JSON.stringify({ status: 404, error: 'Not Found', response: { message: [`sem rota ${key}`] } }), { status: 404 });
-    return new Response(JSON.stringify(res.body), { status: res.status ?? 200 });
-  }) as unknown as typeof fetch;
+  const evo: EvolutionClient = {
+    async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+      const call: Call = { method, path, headers: {}, body };
+      calls.push(call);
+      const key = `${method} ${path.split('?')[0]}`;
+      const route = routes[key];
+      const res = typeof route === 'function' ? route(call) : route;
+      if (!res) {
+        const notFound = { status: 404, error: 'Not Found', response: { message: [`sem rota ${key}`] } };
+        return parseResponse<T>(method, path, 404, JSON.stringify(notFound));
+      }
+      return parseResponse<T>(method, path, res.status ?? 200, JSON.stringify(res.body));
+    },
+  };
 
-  const cfg = { ...baseConfig, ...config };
-  const evo = createEvolutionClient({ baseUrl: cfg.url, apiKey: cfg.apiKey, fetch: fakeFetch });
-  const server = createServer(evo, cfg);
+  const server = createMcpServer(evo, { ...baseConfig, ...config });
   const client = new Client({ name: 'teste', version: '1.0.0' });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(st), client.connect(ct)]);
@@ -82,8 +79,15 @@ describe('lista de ferramentas', () => {
     expect(byName.evolution_instance_logout.annotations?.destructiveHint).toBe(true);
   });
 
+  it('token de instância não recebe a ferramenta de criar instância', async () => {
+    const { client } = await setup({}, { globalKey: false });
+    const { tools } = await client.listTools();
+    expect(tools).toHaveLength(24);
+    expect(tools.map((t) => t.name)).not.toContain('evolution_instance_create');
+  });
+
   it('modo read registra só ferramentas de leitura', async () => {
-    const { client } = await setup({}, { mode: 'read' });
+    const { client } = await setup({}, { readOnly: true });
     const { tools } = await client.listTools();
     expect(tools.length).toBe(10);
     expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
@@ -94,14 +98,15 @@ describe('leitura', () => {
   it('lista instâncias com a chave global e mascara tokens', async () => {
     const { call, calls } = await setup({
       'GET /instance/fetchInstances': {
-        body: [{ id: 'i1', name: 'vendas', connectionStatus: 'open', token: 'TOKEN-DA-INSTANCIA', Proxy: { password: 'p' } }],
+        body: [
+          { id: 'i1', name: 'vendas', connectionStatus: 'open', token: 'TOKEN-DA-INSTANCIA', Proxy: { password: 'p' } },
+        ],
       },
     });
     const r = await call('evolution_instance_list', { instanceName: 'vendas' });
     expect(r.isError).toBeFalsy();
     expect(r.data[0]).toMatchObject({ name: 'vendas', token: MASK, Proxy: { password: MASK } });
     expect(calls[0].path).toBe('/instance/fetchInstances?instanceName=vendas');
-    expect(calls[0].headers.apikey).toBe('chave-global-teste');
   });
 
   it('mostra segredos quando EVOLUTION_MCP_SHOW_SECRETS está ligado', async () => {
@@ -113,7 +118,9 @@ describe('leitura', () => {
   });
 
   it('codifica o nome da instância na URL', async () => {
-    const { call, calls } = await setup({ 'GET /instance/connectionState/loja%20centro': { body: { instance: { state: 'open' } } } });
+    const { call, calls } = await setup({
+      'GET /instance/connectionState/loja%20centro': { body: { instance: { state: 'open' } } },
+    });
     const r = await call('evolution_instance_connection_state', { instanceName: 'loja centro' });
     expect(r.data.instance.state).toBe('open');
     expect(calls[0].path).toBe('/instance/connectionState/loja%20centro');
@@ -177,7 +184,9 @@ describe('escrita', () => {
 
   it('connect devolve QR e código de pareamento', async () => {
     const { call, calls } = await setup({
-      'GET /instance/connect/vendas': { body: { pairingCode: 'ABCD-1234', code: '2@x', base64: `data:image/png;base64,${PNG}`, count: 1 } },
+      'GET /instance/connect/vendas': {
+        body: { pairingCode: 'ABCD-1234', code: '2@x', base64: `data:image/png;base64,${PNG}`, count: 1 },
+      },
     });
     const r = await call('evolution_instance_connect', { instanceName: 'vendas', number: '5511999999999' });
     expect(calls[0].path).toBe('/instance/connect/vendas?number=5511999999999');
@@ -186,7 +195,9 @@ describe('escrita', () => {
   });
 
   it('a Evolution responder 200 com { error: true } conta como erro', async () => {
-    const { call } = await setup({ 'POST /instance/restart/vendas': { body: { error: true, message: 'Error: falhou' } } });
+    const { call } = await setup({
+      'POST /instance/restart/vendas': { body: { error: true, message: 'Error: falhou' } },
+    });
     const r = await call('evolution_instance_restart', { instanceName: 'vendas' });
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain('falhou');
@@ -213,7 +224,13 @@ describe('escrita', () => {
   it('webhook_set mescla com o atual e usa os nomes do schema de set', async () => {
     const { call, calls } = await setup({
       'GET /webhook/find/vendas': {
-        body: { url: 'https://antigo.test', enabled: true, events: ['MESSAGES_UPSERT'], webhookByEvents: true, webhookBase64: false },
+        body: {
+          url: 'https://antigo.test',
+          enabled: true,
+          events: ['MESSAGES_UPSERT'],
+          webhookByEvents: true,
+          webhookBase64: false,
+        },
       },
       'POST /webhook/set/vendas': { status: 201, body: {} },
     });
@@ -246,15 +263,31 @@ describe('escrita', () => {
 
   it('proxy_set ligado completa com o proxy atual (inclusive senha)', async () => {
     const { call, calls } = await setup({
-      'GET /proxy/find/vendas': { body: { enabled: false, host: 'p.local', port: '80', protocol: 'http', username: 'u', password: 's' } },
+      'GET /proxy/find/vendas': {
+        body: { enabled: false, host: 'p.local', port: '80', protocol: 'http', username: 'u', password: 's' },
+      },
       'POST /proxy/set/vendas': { status: 201, body: {} },
     });
     await call('evolution_instance_proxy_set', { instanceName: 'vendas', enabled: true, port: '8080' });
-    expect(calls[1].body).toEqual({ enabled: true, host: 'p.local', port: '8080', protocol: 'http', username: 'u', password: 's' });
+    expect(calls[1].body).toEqual({
+      enabled: true,
+      host: 'p.local',
+      port: '8080',
+      protocol: 'http',
+      username: 'u',
+      password: 's',
+    });
   });
 
   it('privacy_update mescla com a privacidade atual', async () => {
-    const current = { readreceipts: 'all', profile: 'all', status: 'contacts', online: 'all', last: 'contacts', groupadd: 'all' };
+    const current = {
+      readreceipts: 'all',
+      profile: 'all',
+      status: 'contacts',
+      online: 'all',
+      last: 'contacts',
+      groupadd: 'all',
+    };
     const { call, calls } = await setup({
       'GET /chat/fetchPrivacySettings/vendas': { body: current },
       'POST /chat/updatePrivacySettings/vendas': { status: 201, body: {} },
@@ -274,7 +307,9 @@ describe('destrutivas', () => {
 
   it('delete com confirmação chama DELETE /instance/delete', async () => {
     const { call, calls } = await setup({
-      'DELETE /instance/delete/vendas': { body: { status: 'SUCCESS', error: false, response: { message: 'Instance deleted' } } },
+      'DELETE /instance/delete/vendas': {
+        body: { status: 'SUCCESS', error: false, response: { message: 'Instance deleted' } },
+      },
     });
     const r = await call('evolution_instance_delete', { instanceName: 'vendas', confirm: 'vendas' });
     expect(r.isError).toBeFalsy();
@@ -289,22 +324,5 @@ describe('destrutivas', () => {
       expect(r.content[0].text).toContain('protegida');
     }
     expect(calls).toHaveLength(0);
-  });
-});
-
-describe('config', () => {
-  it('exige URL e chave', () => {
-    expect(() => loadConfig({})).toThrow(/EVOLUTION_URL[\s\S]*EVOLUTION_API_KEY/);
-  });
-
-  it('lê modo, protegidas e segredos', () => {
-    const c = loadConfig({
-      EVOLUTION_URL: 'https://evo.test',
-      EVOLUTION_API_KEY: 'k',
-      EVOLUTION_MCP_MODE: 'read',
-      EVOLUTION_MCP_PROTECTED_INSTANCES: 'a, b ,',
-      EVOLUTION_MCP_SHOW_SECRETS: 'true',
-    });
-    expect(c).toMatchObject({ mode: 'read', protectedInstances: ['a', 'b'], showSecrets: true, timeoutMs: 30000 });
   });
 });

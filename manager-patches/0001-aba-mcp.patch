@@ -1,0 +1,386 @@
+diff --git a/src/components/sidebar.tsx b/src/components/sidebar.tsx
+index c5454f0..8623b1e 100644
+--- a/src/components/sidebar.tsx
++++ b/src/components/sidebar.tsx
+@@ -1,5 +1,5 @@
+ /* eslint-disable @typescript-eslint/no-explicit-any */
+-import { CircleHelp, Cog, FileQuestion, IterationCcw, LayoutDashboard, LifeBuoy, MessageCircle, Zap, ChevronDown } from "lucide-react";
++import { Bot, CircleHelp, Cog, FileQuestion, IterationCcw, LayoutDashboard, LifeBuoy, MessageCircle, Zap, ChevronDown } from "lucide-react";
+ import { useMemo } from "react";
+ import { useTranslation } from "react-i18next";
+ import { Link, useLocation, useNavigate } from "react-router-dom";
+@@ -28,6 +28,12 @@ function Sidebar() {
+         icon: MessageCircle,
+         path: "chat",
+       },
++      {
++        id: "mcp",
++        title: t("sidebar.mcp"),
++        icon: Bot,
++        path: "mcp",
++      },
+       {
+         navLabel: true,
+         title: t("sidebar.configurations"),
+diff --git a/src/pages/instance/Mcp/index.tsx b/src/pages/instance/Mcp/index.tsx
+new file mode 100644
+index 0000000..510af11
+--- /dev/null
++++ b/src/pages/instance/Mcp/index.tsx
+@@ -0,0 +1,139 @@
++// Aba MCP (build próprio da Acronomus): mostra a URL do servidor MCP da Evolution (/mcp) e a
++// configuração pronta para o Claude Code, o Claude (claude.ai / Desktop) e outros clientes,
++// autenticando com o token desta instância.
++import { Copy } from "lucide-react";
++import { useEffect, useMemo, useState } from "react";
++import { useTranslation } from "react-i18next";
++
++import { InstanceToken } from "@/components/instance-token";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
++
++import { useInstance } from "@/contexts/InstanceContext";
++
++import { TOKEN_ID } from "@/lib/queries/token";
++
++import { copyToClipboard } from "@/utils/copy-to-clipboard";
++
++type McpStatus = "checking" | "on" | "off" | "unknown";
++
++function CodeBlock({ code }: { code: string }) {
++  return (
++    <div className="relative">
++      <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 pr-12 text-xs">{code}</pre>
++      <Button variant="ghost" size="icon" className="absolute right-1 top-1" onClick={() => copyToClipboard(code)}>
++        <Copy size="15" />
++      </Button>
++    </div>
++  );
++}
++
++function Mcp() {
++  const { t } = useTranslation();
++  const { instance } = useInstance();
++  const [status, setStatus] = useState<McpStatus>("checking");
++
++  const apiUrl = (localStorage.getItem(TOKEN_ID.API_URL) || window.location.origin).replace(/\/+$/, "");
++  const mcpUrl = `${apiUrl}/mcp`;
++  // Com AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false o servidor não devolve o token.
++  const hasToken = Boolean(instance?.token);
++  const token = instance?.token || t("mcp.tokenPlaceholder");
++  const name = (instance?.name ?? "instancia").replace(/[^\w-]/g, "-");
++
++  // Sem chave: 401 = MCP ligado; 404 = MCP_ENABLED desligado no servidor.
++  useEffect(() => {
++    let cancelled = false;
++    fetch(mcpUrl, {
++      method: "POST",
++      headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
++      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
++    })
++      .then((res) => !cancelled && setStatus(res.status === 404 ? "off" : res.status === 401 ? "on" : "unknown"))
++      .catch(() => !cancelled && setStatus("unknown"));
++    return () => {
++      cancelled = true;
++    };
++  }, [mcpUrl]);
++
++  const configs = useMemo(
++    () => ({
++      claudeCode: `claude mcp add --transport http evolution-${name} ${mcpUrl} --header "Authorization: Bearer ${token}"`,
++      json: JSON.stringify(
++        { mcpServers: { [`evolution-${name}`]: { type: "http", url: mcpUrl, headers: { Authorization: `Bearer ${token}` } } } },
++        null,
++        2,
++      ),
++    }),
++    [mcpUrl, name, token],
++  );
++
++  if (!instance) return null;
++
++  return (
++    <main className="flex flex-col gap-6 pb-8">
++      <div>
++        <div className="flex items-center gap-3">
++          <h3 className="text-lg font-medium">{t("mcp.title")}</h3>
++          {status === "on" && <Badge>{t("mcp.status.on")}</Badge>}
++          {status === "off" && <Badge variant="destructive">{t("mcp.status.off")}</Badge>}
++          {status === "unknown" && <Badge variant="secondary">{t("mcp.status.unknown")}</Badge>}
++        </div>
++        <p className="mt-1 text-sm text-muted-foreground">{t("mcp.description")}</p>
++        {status === "off" && <p className="mt-2 text-sm text-destructive">{t("mcp.offHint")}</p>}
++      </div>
++
++      <section className="flex flex-col gap-2">
++        <h4 className="text-sm font-medium">{t("mcp.url")}</h4>
++        <CodeBlock code={mcpUrl} />
++      </section>
++
++      <section className="flex flex-col gap-2">
++        <h4 className="text-sm font-medium">{t("mcp.token")}</h4>
++        {hasToken ? (
++          <InstanceToken token={token} className="max-w-xl" />
++        ) : (
++          <p className="text-sm text-amber-500">{t("mcp.tokenHidden")}</p>
++        )}
++        <p className="text-xs text-muted-foreground">{t("mcp.tokenHint")}</p>
++      </section>
++
++      <Tabs defaultValue="claude-code">
++        <TabsList>
++          <TabsTrigger value="claude-code">Claude Code</TabsTrigger>
++          <TabsTrigger value="claude">Claude (claude.ai / Desktop)</TabsTrigger>
++          <TabsTrigger value="json">{t("mcp.others")}</TabsTrigger>
++        </TabsList>
++
++        <TabsContent value="claude-code" className="flex flex-col gap-2">
++          <p className="text-sm text-muted-foreground">{t("mcp.claudeCode")}</p>
++          <CodeBlock code={configs.claudeCode} />
++        </TabsContent>
++
++        <TabsContent value="claude" className="flex flex-col gap-3">
++          <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
++            <li>{t("mcp.claude.step1")}</li>
++            <li>{t("mcp.claude.step2")}</li>
++            <li>{t("mcp.claude.step3")}</li>
++          </ol>
++          <CodeBlock code={mcpUrl} />
++          <CodeBlock code={`Authorization: Bearer ${token}`} />
++          <p className="text-xs text-muted-foreground">{t("mcp.claude.note")}</p>
++        </TabsContent>
++
++        <TabsContent value="json" className="flex flex-col gap-2">
++          <p className="text-sm text-muted-foreground">{t("mcp.json")}</p>
++          <CodeBlock code={configs.json} />
++        </TabsContent>
++      </Tabs>
++
++      <section className="flex flex-col gap-1 text-sm text-muted-foreground">
++        <h4 className="font-medium text-foreground">{t("mcp.toolsTitle")}</h4>
++        <p>{t("mcp.tools")}</p>
++        <p>{t("mcp.safety")}</p>
++      </section>
++    </main>
++  );
++}
++
++export { Mcp };
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 31dd36a..a62a2c5 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -15,6 +15,7 @@ import { EmbedChat } from "@/pages/instance/EmbedChat";
+ import { Evoai } from "@/pages/instance/Evoai";
+ import { EvolutionBot } from "@/pages/instance/EvolutionBot";
+ import { Flowise } from "@/pages/instance/Flowise";
++import { Mcp } from "@/pages/instance/Mcp";
+ import { N8n } from "@/pages/instance/N8n";
+ import { Openai } from "@/pages/instance/Openai";
+ import { Proxy } from "@/pages/instance/Proxy";
+@@ -280,6 +281,16 @@ const router = createBrowserRouter([
+       </ProtectedRoute>
+     ),
+   },
++  {
++    path: "/manager/instance/:instanceId/mcp",
++    element: (
++      <ProtectedRoute>
++        <InstanceLayout>
++          <Mcp />
++        </InstanceLayout>
++      </ProtectedRoute>
++    ),
++  },
+   {
+     path: "/manager/instance/:instanceId/proxy",
+     element: (
+diff --git a/src/translate/languages/en-US.json b/src/translate/languages/en-US.json
+index f63d13e..eef29c7 100644
+--- a/src/translate/languages/en-US.json
++++ b/src/translate/languages/en-US.json
+@@ -87,7 +87,8 @@
+     "documentation": "Documentation",
+     "postman": "Postman",
+     "discord": "Discord",
+-    "supportPremium": "Support Premium"
++    "supportPremium": "Support Premium",
++    "mcp": "MCP"
+   },
+   "toast": {
+     "instance": {
+@@ -1435,5 +1436,32 @@
+         "title": "Default Settings"
+       }
+     }
++  },
++  "mcp": {
++    "title": "MCP",
++    "description": "This Evolution's MCP server: lets Claude (and other MCP clients) manage this instance — connection, settings, webhook, events, profile and privacy.",
++    "status": {
++      "on": "Active",
++      "off": "Disabled",
++      "unknown": "Not checked"
++    },
++    "offHint": "MCP is disabled on this server. Set MCP_ENABLED=true in the Evolution environment and restart.",
++    "url": "Server URL",
++    "token": "This instance's token",
++    "tokenHint": "With the instance token, MCP only sees this instance. The global key (AUTHENTICATION_API_KEY) reaches every instance and can create new ones: don't share it.",
++    "others": "Other clients",
++    "claudeCode": "Run in your terminal:",
++    "claude": {
++      "step1": "Open Settings → Connectors → Add custom connector.",
++      "step2": "Paste the URL below.",
++      "step3": "Under Request headers, add an Authorization header with the value below.",
++      "note": "Request headers on custom connectors are in beta in Claude; if the option isn't there, use Claude Code."
++    },
++    "json": "Configuration for clients that support MCP over HTTP (Cursor, VS Code and others):",
++    "toolsTitle": "What Claude can do",
++    "tools": "Read: connection state, settings, proxy, webhook, events, profile and privacy. Write: connect (QR code or pairing code), restart, presence and edit all of the above. Logout and delete require confirming the instance name.",
++    "safety": "Tokens and passwords are masked in responses. The admin can make MCP read-only (MCP_READ_ONLY) and protect instances from deletion (MCP_PROTECTED_INSTANCES).",
++    "tokenPlaceholder": "<INSTANCE-TOKEN>",
++    "tokenHidden": "This server hides tokens (AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false). Use the token returned when the instance was created in place of <INSTANCE-TOKEN> below."
+   }
+ }
+diff --git a/src/translate/languages/es-ES.json b/src/translate/languages/es-ES.json
+index 1dc881f..d6107a1 100644
+--- a/src/translate/languages/es-ES.json
++++ b/src/translate/languages/es-ES.json
+@@ -67,7 +67,8 @@
+     "documentation": "Documentación",
+     "postman": "Postman",
+     "discord": "Discord",
+-    "supportPremium": "Soporte Premium"
++    "supportPremium": "Soporte Premium",
++    "mcp": "MCP"
+   },
+   "toast": {
+     "instance": {
+@@ -1415,5 +1416,32 @@
+         "title": "Configuraciones Predeterminadas"
+       }
+     }
++  },
++  "mcp": {
++    "title": "MCP",
++    "description": "This Evolution's MCP server: lets Claude (and other MCP clients) manage this instance — connection, settings, webhook, events, profile and privacy.",
++    "status": {
++      "on": "Active",
++      "off": "Disabled",
++      "unknown": "Not checked"
++    },
++    "offHint": "MCP is disabled on this server. Set MCP_ENABLED=true in the Evolution environment and restart.",
++    "url": "Server URL",
++    "token": "This instance's token",
++    "tokenHint": "With the instance token, MCP only sees this instance. The global key (AUTHENTICATION_API_KEY) reaches every instance and can create new ones: don't share it.",
++    "others": "Other clients",
++    "claudeCode": "Run in your terminal:",
++    "claude": {
++      "step1": "Open Settings → Connectors → Add custom connector.",
++      "step2": "Paste the URL below.",
++      "step3": "Under Request headers, add an Authorization header with the value below.",
++      "note": "Request headers on custom connectors are in beta in Claude; if the option isn't there, use Claude Code."
++    },
++    "json": "Configuration for clients that support MCP over HTTP (Cursor, VS Code and others):",
++    "toolsTitle": "What Claude can do",
++    "tools": "Read: connection state, settings, proxy, webhook, events, profile and privacy. Write: connect (QR code or pairing code), restart, presence and edit all of the above. Logout and delete require confirming the instance name.",
++    "safety": "Tokens and passwords are masked in responses. The admin can make MCP read-only (MCP_READ_ONLY) and protect instances from deletion (MCP_PROTECTED_INSTANCES).",
++    "tokenPlaceholder": "<INSTANCE-TOKEN>",
++    "tokenHidden": "This server hides tokens (AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false). Use the token returned when the instance was created in place of <INSTANCE-TOKEN> below."
+   }
+ }
+diff --git a/src/translate/languages/fr-FR.json b/src/translate/languages/fr-FR.json
+index 7b36399..15041b0 100644
+--- a/src/translate/languages/fr-FR.json
++++ b/src/translate/languages/fr-FR.json
+@@ -66,7 +66,8 @@
+     "documentation": "Documentation",
+     "postman": "Postman",
+     "discord": "Discord",
+-    "supportPremium": "Support Premium"
++    "supportPremium": "Support Premium",
++    "mcp": "MCP"
+   },
+   "toast": {
+     "instance": {
+@@ -1414,5 +1415,32 @@
+         "title": "Paramètres par Défaut"
+       }
+     }
++  },
++  "mcp": {
++    "title": "MCP",
++    "description": "This Evolution's MCP server: lets Claude (and other MCP clients) manage this instance — connection, settings, webhook, events, profile and privacy.",
++    "status": {
++      "on": "Active",
++      "off": "Disabled",
++      "unknown": "Not checked"
++    },
++    "offHint": "MCP is disabled on this server. Set MCP_ENABLED=true in the Evolution environment and restart.",
++    "url": "Server URL",
++    "token": "This instance's token",
++    "tokenHint": "With the instance token, MCP only sees this instance. The global key (AUTHENTICATION_API_KEY) reaches every instance and can create new ones: don't share it.",
++    "others": "Other clients",
++    "claudeCode": "Run in your terminal:",
++    "claude": {
++      "step1": "Open Settings → Connectors → Add custom connector.",
++      "step2": "Paste the URL below.",
++      "step3": "Under Request headers, add an Authorization header with the value below.",
++      "note": "Request headers on custom connectors are in beta in Claude; if the option isn't there, use Claude Code."
++    },
++    "json": "Configuration for clients that support MCP over HTTP (Cursor, VS Code and others):",
++    "toolsTitle": "What Claude can do",
++    "tools": "Read: connection state, settings, proxy, webhook, events, profile and privacy. Write: connect (QR code or pairing code), restart, presence and edit all of the above. Logout and delete require confirming the instance name.",
++    "safety": "Tokens and passwords are masked in responses. The admin can make MCP read-only (MCP_READ_ONLY) and protect instances from deletion (MCP_PROTECTED_INSTANCES).",
++    "tokenPlaceholder": "<INSTANCE-TOKEN>",
++    "tokenHidden": "This server hides tokens (AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false). Use the token returned when the instance was created in place of <INSTANCE-TOKEN> below."
+   }
+ }
+diff --git a/src/translate/languages/pt-BR.json b/src/translate/languages/pt-BR.json
+index 7943d44..adbc7aa 100644
+--- a/src/translate/languages/pt-BR.json
++++ b/src/translate/languages/pt-BR.json
+@@ -67,7 +67,8 @@
+     "documentation": "Documentação",
+     "postman": "Postman",
+     "discord": "Discord",
+-    "supportPremium": "Suporte Premium"
++    "supportPremium": "Suporte Premium",
++    "mcp": "MCP"
+   },
+   "toast": {
+     "instance": {
+@@ -1415,5 +1416,32 @@
+         "title": "Configurações Padrão"
+       }
+     }
++  },
++  "mcp": {
++    "title": "MCP",
++    "description": "Servidor MCP desta Evolution: deixa o Claude (e outros clientes MCP) gerenciar esta instância — conexão, configurações, webhook, eventos, perfil e privacidade.",
++    "status": {
++      "on": "Ativo",
++      "off": "Desligado",
++      "unknown": "Não verificado"
++    },
++    "offHint": "O MCP está desligado neste servidor. Defina MCP_ENABLED=true nas variáveis de ambiente da Evolution e reinicie.",
++    "url": "URL do servidor",
++    "token": "Token desta instância",
++    "tokenHint": "Com o token da instância, o MCP só enxerga esta instância. A chave global (AUTHENTICATION_API_KEY) dá acesso a todas e permite criar instâncias: não a compartilhe.",
++    "others": "Outros clientes",
++    "claudeCode": "Rode no terminal:",
++    "claude": {
++      "step1": "Abra Configurações → Conectores → Adicionar conector personalizado.",
++      "step2": "Cole a URL abaixo.",
++      "step3": "Em Cabeçalhos da requisição, adicione o cabeçalho Authorization com o valor abaixo.",
++      "note": "O cabeçalho em conectores personalizados está em beta no Claude; se a opção não aparecer, use o Claude Code."
++    },
++    "json": "Configuração para clientes que aceitam MCP por HTTP (Cursor, VS Code e outros):",
++    "toolsTitle": "O que o Claude pode fazer",
++    "tools": "Ler: estado da conexão, configurações, proxy, webhook, eventos, perfil e privacidade. Escrever: conectar (QR code ou código de pareamento), reiniciar, presença e editar tudo isso. Desconectar e excluir exigem confirmar o nome da instância.",
++    "safety": "Tokens e senhas saem mascarados nas respostas. O administrador pode deixar o MCP só leitura (MCP_READ_ONLY) e proteger instâncias contra exclusão (MCP_PROTECTED_INSTANCES).",
++    "tokenPlaceholder": "<TOKEN-DA-INSTANCIA>",
++    "tokenHidden": "Este servidor não mostra tokens (AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false). Use o token devolvido quando a instância foi criada no lugar de <TOKEN-DA-INSTANCIA> abaixo."
+   }
+ }

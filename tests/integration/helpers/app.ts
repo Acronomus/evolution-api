@@ -53,6 +53,9 @@ const buildApp = async (): Promise<Express> => {
 
 export const api = async () => request(await buildApp());
 
+/** O app Express montado (o mesmo do `api()`), para quem precisa dele como handler. */
+export const getApp = buildApp;
+
 export const GLOBAL_KEY = { apikey: TEST_API_KEY };
 
 /** Fecha conexões e encerra as instâncias em memória no fim de cada arquivo. */

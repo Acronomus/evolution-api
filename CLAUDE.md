@@ -68,6 +68,23 @@ Regras:
 - Lockfile: regere com `npm install --package-lock-only` e confira com `npm ci`; `npm install` com
   `node_modules` presente perde os binários opcionais de outras plataformas.
 
+### Servidor MCP (`/mcp`) e manager
+
+- `src/api/mcp/`: servidor MCP (Streamable HTTP, sem sessão) montado em `/mcp` pelo `src/app.ts`.
+  Liga com `MCP_ENABLED=true`. Autentica com a mesma apikey da API (header `apikey` ou
+  `Authorization: Bearer`). Cada ferramenta chama a própria API REST por loopback com essa chave,
+  então quem autoriza são os guards: a chave global vê e cria instâncias; o token de uma instância só
+  passa nas rotas dela. `MCP_READ_ONLY`, `MCP_PROTECTED_INSTANCES` e `MCP_SHOW_SECRETS` no `env.example`.
+- Ferramenta nova → teste em `tests/unit/mcp.tools.test.ts`; caminho HTTP e autorização em
+  `tests/integration/mcp.test.ts`.
+- O SDK v2 do MCP exige zod 4, e o `openai@4` do upstream pede zod 3 como peer: o zod 4 entra
+  pelo alias `zod4` (`import * as z from 'zod4'`). Não troque por `zod`.
+- **Manager**: `manager/dist` é build do submódulo `evolution-manager-v2` (upstream, commit fixado)
+  com os patches de `manager-patches/` (ex.: a aba MCP). Mudou a tela? Edite no submódulo, regrave o
+  patch (`git -C evolution-manager-v2 diff > manager-patches/NNNN-....patch`), rode
+  `scripts/build-manager.sh` e commite `manager/dist` e o patch. Não commite o ponteiro do submódulo
+  sem querer subir o manager do upstream.
+
 ---
 
 This file provides comprehensive guidance to Claude AI when working with the Evolution API codebase.

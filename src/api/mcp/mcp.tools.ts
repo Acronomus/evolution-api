@@ -1,11 +1,21 @@
 import { McpServer } from '@modelcontextprotocol/server';
-import * as z from 'zod/v4';
+import * as z from 'zod4';
 
-import type { Config } from './config.js';
-import { EvolutionError, type EvolutionClient } from './evolution.js';
-import { redact } from './redact.js';
+import { EvolutionClient, EvolutionError } from './mcp.client';
+import { redact } from './mcp.redact';
 
-export const VERSION = '0.1.0';
+export const MCP_VERSION = '0.2.0';
+
+export interface McpToolsOptions {
+  /** Só ferramentas de leitura. */
+  readOnly: boolean;
+  /** Instâncias que nunca são desconectadas nem apagadas pelo MCP. */
+  protectedInstances: string[];
+  /** Mostra tokens e senhas nas respostas. */
+  showSecrets: boolean;
+  /** A chave de quem chama é a global (vê e cria instâncias); senão é o token de uma instância. */
+  globalKey: boolean;
+}
 
 export const EVENTS = [
   'APPLICATION_STARTUP',
@@ -46,9 +56,7 @@ export const EVENT_TRANSPORTS = ['websocket', 'rabbitmq', 'nats', 'sqs', 'kafka'
 
 const PRIVACY_KEYS = ['readreceipts', 'profile', 'status', 'online', 'last', 'groupadd'] as const;
 
-type Content =
-  | { type: 'text'; text: string }
-  | { type: 'image'; data: string; mimeType: string };
+type Content = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string };
 type ToolResult = { content: Content[]; isError?: boolean };
 
 const instanceName = z.string().min(1).describe('Nome da instância na Evolution');
@@ -76,8 +84,8 @@ const webhookShape = {
 
 const enc = encodeURIComponent;
 
-export function createServer(client: EvolutionClient, config: Config): McpServer {
-  const server = new McpServer({ name: 'evolution-mcp', version: VERSION });
+export function createMcpServer(client: EvolutionClient, config: McpToolsOptions): McpServer {
+  const server = new McpServer({ name: 'evolution-api', version: MCP_VERSION });
   const show = (data: unknown) => (config.showSecrets ? data : redact(data));
   const json = (data: unknown): Content => ({ type: 'text', text: JSON.stringify(show(data), null, 2) });
 
@@ -114,7 +122,9 @@ export function createServer(client: EvolutionClient, config: Config): McpServer
 
   const fetchInstance = async (name: string): Promise<any> => {
     const list = await client.request<any[]>('GET', `/instance/fetchInstances?instanceName=${enc(name)}`);
-    const found = Array.isArray(list) ? list.find((i) => i?.name === name || i?.instanceName === name) ?? list[0] : null;
+    const found = Array.isArray(list)
+      ? (list.find((i) => i?.name === name || i?.instanceName === name) ?? list[0])
+      : null;
     if (!found) throw new Error(`Instância "${name}" não encontrada`);
     return found;
   };
@@ -179,7 +189,8 @@ export function createServer(client: EvolutionClient, config: Config): McpServer
     'evolution_instance_settings_get',
     {
       title: 'Ler configurações da instância',
-      description: 'Configurações de comportamento: recusar chamadas, ignorar grupos, sempre online, ler mensagens etc.',
+      description:
+        'Configurações de comportamento: recusar chamadas, ignorar grupos, sempre online, ler mensagens etc.',
       inputSchema: z.object({ instanceName }),
       annotations: ro,
     },
@@ -257,63 +268,68 @@ export function createServer(client: EvolutionClient, config: Config): McpServer
     'evolution_instance_privacy_get',
     {
       title: 'Ler privacidade',
-      description: 'Configurações de privacidade da conta (visto por último, foto, recado, confirmação de leitura, grupos).',
+      description:
+        'Configurações de privacidade da conta (visto por último, foto, recado, confirmação de leitura, grupos).',
       inputSchema: z.object({ instanceName }),
       annotations: ro,
     },
     run(({ instanceName }) => client.request('GET', `/chat/fetchPrivacySettings/${enc(instanceName)}`)),
   );
 
-  if (config.mode === 'read') return server;
+  if (config.readOnly) return server;
 
   // ───────────────────────────── escrita ─────────────────────────────
 
-  server.registerTool(
-    'evolution_instance_create',
-    {
-      title: 'Criar instância',
-      description:
-        'Cria uma instância. Com `qrcode: true` (padrão) já inicia a conexão e devolve o QR code como imagem; ' +
-        'com `number`, devolve também o código de pareamento. Configurações, proxy e webhook podem vir na criação. ' +
-        'Sem `token`, a Evolution gera um (mascarado na resposta, a menos que EVOLUTION_MCP_SHOW_SECRETS=true).',
-      inputSchema: z.object({
-        instanceName,
-        integration: z
-          .enum(['WHATSAPP-BAILEYS', 'WHATSAPP-BUSINESS', 'EVOLUTION'])
-          .default('WHATSAPP-BAILEYS')
-          .describe('Canal: Baileys (WhatsApp Web), API oficial da Meta ou Evolution'),
-        qrcode: z.boolean().default(true).describe('Iniciar a conexão e devolver o QR (só Baileys)'),
-        number: z.string().optional().describe('Número com DDI; obrigatório na WHATSAPP-BUSINESS, gera pairing code na Baileys'),
-        token: z.string().optional().describe('Token (apikey) da instância; vazio = gerado'),
-        businessId: z.string().optional().describe('Business ID (WHATSAPP-BUSINESS)'),
-        ...settingsShape,
-        proxy: z
-          .object({
-            host: z.string(),
-            port: z.string(),
-            protocol: z.enum(['http', 'https', 'socks4', 'socks5']),
-            username: z.string().optional(),
-            password: z.string().optional(),
-          })
-          .optional(),
-        webhook: z.object(webhookShape).optional(),
+  if (config.globalKey)
+    server.registerTool(
+      'evolution_instance_create',
+      {
+        title: 'Criar instância',
+        description:
+          'Cria uma instância. Com `qrcode: true` (padrão) já inicia a conexão e devolve o QR code como imagem; ' +
+          'com `number`, devolve também o código de pareamento. Configurações, proxy e webhook podem vir na criação. ' +
+          'Sem `token`, a Evolution gera um (mascarado na resposta, a menos que MCP_SHOW_SECRETS=true).',
+        inputSchema: z.object({
+          instanceName,
+          integration: z
+            .enum(['WHATSAPP-BAILEYS', 'WHATSAPP-BUSINESS', 'EVOLUTION'])
+            .default('WHATSAPP-BAILEYS')
+            .describe('Canal: Baileys (WhatsApp Web), API oficial da Meta ou Evolution'),
+          qrcode: z.boolean().default(true).describe('Iniciar a conexão e devolver o QR (só Baileys)'),
+          number: z
+            .string()
+            .optional()
+            .describe('Número com DDI; obrigatório na WHATSAPP-BUSINESS, gera pairing code na Baileys'),
+          token: z.string().optional().describe('Token (apikey) da instância; vazio = gerado'),
+          businessId: z.string().optional().describe('Business ID (WHATSAPP-BUSINESS)'),
+          ...settingsShape,
+          proxy: z
+            .object({
+              host: z.string(),
+              port: z.string(),
+              protocol: z.enum(['http', 'https', 'socks4', 'socks5']),
+              username: z.string().optional(),
+              password: z.string().optional(),
+            })
+            .optional(),
+          webhook: z.object(webhookShape).optional(),
+        }),
+        annotations: rw,
+      },
+      run(async ({ proxy, webhook, ...rest }) => {
+        const body: Record<string, unknown> = { ...rest };
+        if (proxy) {
+          body.proxyHost = proxy.host;
+          body.proxyPort = proxy.port;
+          body.proxyProtocol = proxy.protocol;
+          body.proxyUsername = proxy.username;
+          body.proxyPassword = proxy.password;
+        }
+        if (webhook) body.webhook = { enabled: true, ...webhook };
+        const res: any = await client.request('POST', '/instance/create', body);
+        return withQr(res, res?.qrcode);
       }),
-      annotations: rw,
-    },
-    run(async ({ proxy, webhook, ...rest }) => {
-      const body: Record<string, unknown> = { ...rest };
-      if (proxy) {
-        body.proxyHost = proxy.host;
-        body.proxyPort = proxy.port;
-        body.proxyProtocol = proxy.protocol;
-        body.proxyUsername = proxy.username;
-        body.proxyPassword = proxy.password;
-      }
-      if (webhook) body.webhook = { enabled: true, ...webhook };
-      const res: any = await client.request('POST', '/instance/create', body);
-      return withQr(res, res?.qrcode);
-    }),
-  );
+    );
 
   server.registerTool(
     'evolution_instance_connect',
@@ -406,7 +422,8 @@ export function createServer(client: EvolutionClient, config: Config): McpServer
     run(async ({ instanceName, ...patch }) => {
       const path = `/proxy/set/${enc(instanceName)}`;
       // Desligado, a Evolution zera os campos; o schema dela só exige que venham preenchidos.
-      if (!patch.enabled) return client.request('POST', path, { enabled: false, host: '-', port: '-', protocol: 'http' });
+      if (!patch.enabled)
+        return client.request('POST', path, { enabled: false, host: '-', port: '-', protocol: 'http' });
 
       const current: any = (await client.request('GET', `/proxy/find/${enc(instanceName)}`)) ?? {};
       const body: Record<string, unknown> = {
@@ -551,7 +568,7 @@ export function createServer(client: EvolutionClient, config: Config): McpServer
   const guard = (name: string, confirm: string) => {
     if (config.protectedInstances.includes(name)) {
       throw new Error(
-        `A instância "${name}" está protegida (EVOLUTION_MCP_PROTECTED_INSTANCES); faça isso pelo manager da Evolution.`,
+        `A instância "${name}" está protegida (MCP_PROTECTED_INSTANCES); faça isso pelo manager da Evolution.`,
       );
     }
     if (confirm !== name) throw new Error(`Confirmação não confere: repita o nome exato da instância em "confirm".`);
