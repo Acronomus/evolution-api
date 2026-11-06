@@ -70,3 +70,33 @@ jobs:
       - name: Apagar a imagem do CI
         if: always()
         run: docker image rm -f evolution-api-ci:${{ github.run_id }} || true
+
+  # MCP interno (mcp/): pacote próprio, fora da imagem da Evolution.
+  mcp:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Checar tipos
+        run: npm run typecheck
+
+      - name: Testes
+        run: npm test
+
+      - name: Build
+        run: npm run build
