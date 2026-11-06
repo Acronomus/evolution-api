@@ -73,7 +73,8 @@ jobs:
 
   # MCP interno (mcp/): pacote próprio, fora da imagem da Evolution.
   mcp:
-    runs-on: [self-hosted, linux]
+    # Mesmo motivo do job `test`: repo público roda no runner do GitHub.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
       run:
