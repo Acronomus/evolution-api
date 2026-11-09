@@ -1,46 +1,42 @@
-diff --git a/src/components/sidebar.tsx b/src/components/sidebar.tsx
-index c5454f0..8623b1e 100644
---- a/src/components/sidebar.tsx
-+++ b/src/components/sidebar.tsx
-@@ -1,5 +1,5 @@
- /* eslint-disable @typescript-eslint/no-explicit-any */
--import { CircleHelp, Cog, FileQuestion, IterationCcw, LayoutDashboard, LifeBuoy, MessageCircle, Zap, ChevronDown } from "lucide-react";
-+import { Bot, CircleHelp, Cog, FileQuestion, IterationCcw, LayoutDashboard, LifeBuoy, MessageCircle, Zap, ChevronDown } from "lucide-react";
- import { useMemo } from "react";
- import { useTranslation } from "react-i18next";
- import { Link, useLocation, useNavigate } from "react-router-dom";
-@@ -28,6 +28,12 @@ function Sidebar() {
-         icon: MessageCircle,
-         path: "chat",
-       },
-+      {
-+        id: "mcp",
-+        title: t("sidebar.mcp"),
-+        icon: Bot,
-+        path: "mcp",
-+      },
-       {
-         navLabel: true,
-         title: t("sidebar.configurations"),
+diff --git a/src/components/header.tsx b/src/components/header.tsx
+index b13f587..3dc0093 100644
+--- a/src/components/header.tsx
++++ b/src/components/header.tsx
+@@ -1,4 +1,4 @@
+-import { DoorOpen } from "lucide-react";
++import { Bot, DoorOpen } from "lucide-react";
+ import { useState } from "react";
+ import { Link, useNavigate } from "react-router-dom";
+ 
+@@ -39,6 +39,12 @@ function Header({ instanceId }: { instanceId?: string }) {
+             <AvatarImage src={instance?.profilePicUrl || "/assets/images/evolution-logo.png"} alt={instance?.name} />
+           </Avatar>
+         )}
++        <Button variant="ghost" size="sm" asChild>
++          <Link to="/manager/mcp" className="flex items-center gap-2">
++            <Bot size="15" />
++            <span>MCP</span>
++          </Link>
++        </Button>
+         <LanguageToggle />
+         <ModeToggle />
+         <Button onClick={() => setLogoutConfirmation(true)} variant="destructive" size="icon">
 diff --git a/src/pages/instance/Mcp/index.tsx b/src/pages/instance/Mcp/index.tsx
 new file mode 100644
-index 0000000..510af11
+index 0000000..886c4c2
 --- /dev/null
 +++ b/src/pages/instance/Mcp/index.tsx
-@@ -0,0 +1,139 @@
-+// Aba MCP (build próprio da Acronomus): mostra a URL do servidor MCP da Evolution (/mcp) e a
-+// configuração pronta para o Claude Code, o Claude (claude.ai / Desktop) e outros clientes,
-+// autenticando com o token desta instância.
+@@ -0,0 +1,122 @@
++// Página MCP (build próprio da Acronomus): o servidor MCP é um só para a Evolution inteira. Mostra
++// a URL (/mcp) e a configuração para o Claude Code, o Claude (claude.ai / Desktop) e outros
++// clientes, com a chave como marcador: quem conecta coloca a própria.
 +import { Copy } from "lucide-react";
 +import { useEffect, useMemo, useState } from "react";
 +import { useTranslation } from "react-i18next";
 +
-+import { InstanceToken } from "@/components/instance-token";
 +import { Badge } from "@/components/ui/badge";
 +import { Button } from "@/components/ui/button";
 +import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-+
-+import { useInstance } from "@/contexts/InstanceContext";
 +
 +import { TOKEN_ID } from "@/lib/queries/token";
 +
@@ -61,15 +57,11 @@ index 0000000..510af11
 +
 +function Mcp() {
 +  const { t } = useTranslation();
-+  const { instance } = useInstance();
 +  const [status, setStatus] = useState<McpStatus>("checking");
 +
 +  const apiUrl = (localStorage.getItem(TOKEN_ID.API_URL) || window.location.origin).replace(/\/+$/, "");
 +  const mcpUrl = `${apiUrl}/mcp`;
-+  // Com AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false o servidor não devolve o token.
-+  const hasToken = Boolean(instance?.token);
-+  const token = instance?.token || t("mcp.tokenPlaceholder");
-+  const name = (instance?.name ?? "instancia").replace(/[^\w-]/g, "-");
++  const key = t("mcp.keyPlaceholder");
 +
 +  // Sem chave: 401 = MCP ligado; 404 = MCP_ENABLED desligado no servidor.
 +  useEffect(() => {
@@ -88,20 +80,18 @@ index 0000000..510af11
 +
 +  const configs = useMemo(
 +    () => ({
-+      claudeCode: `claude mcp add --transport http evolution-${name} ${mcpUrl} --header "Authorization: Bearer ${token}"`,
++      claudeCode: `claude mcp add --transport http evolution ${mcpUrl} --header "Authorization: Bearer ${key}"`,
 +      json: JSON.stringify(
-+        { mcpServers: { [`evolution-${name}`]: { type: "http", url: mcpUrl, headers: { Authorization: `Bearer ${token}` } } } },
++        { mcpServers: { evolution: { type: "http", url: mcpUrl, headers: { Authorization: `Bearer ${key}` } } } },
 +        null,
 +        2,
 +      ),
 +    }),
-+    [mcpUrl, name, token],
++    [mcpUrl, key],
 +  );
 +
-+  if (!instance) return null;
-+
 +  return (
-+    <main className="flex flex-col gap-6 pb-8">
++    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6">
 +      <div>
 +        <div className="flex items-center gap-3">
 +          <h3 className="text-lg font-medium">{t("mcp.title")}</h3>
@@ -118,15 +108,7 @@ index 0000000..510af11
 +        <CodeBlock code={mcpUrl} />
 +      </section>
 +
-+      <section className="flex flex-col gap-2">
-+        <h4 className="text-sm font-medium">{t("mcp.token")}</h4>
-+        {hasToken ? (
-+          <InstanceToken token={token} className="max-w-xl" />
-+        ) : (
-+          <p className="text-sm text-amber-500">{t("mcp.tokenHidden")}</p>
-+        )}
-+        <p className="text-xs text-muted-foreground">{t("mcp.tokenHint")}</p>
-+      </section>
++      <p className="text-sm text-muted-foreground">{t("mcp.keyHint")}</p>
 +
 +      <Tabs defaultValue="claude-code">
 +        <TabsList>
@@ -147,7 +129,7 @@ index 0000000..510af11
 +            <li>{t("mcp.claude.step3")}</li>
 +          </ol>
 +          <CodeBlock code={mcpUrl} />
-+          <CodeBlock code={`Authorization: Bearer ${token}`} />
++          <CodeBlock code={`Authorization: Bearer ${key}`} />
 +          <p className="text-xs text-muted-foreground">{t("mcp.claude.note")}</p>
 +        </TabsContent>
 +
@@ -162,13 +144,13 @@ index 0000000..510af11
 +        <p>{t("mcp.tools")}</p>
 +        <p>{t("mcp.safety")}</p>
 +      </section>
-+    </main>
++    </div>
 +  );
 +}
 +
 +export { Mcp };
 diff --git a/src/routes/index.tsx b/src/routes/index.tsx
-index 31dd36a..a62a2c5 100644
+index 31dd36a..0ea0e58 100644
 --- a/src/routes/index.tsx
 +++ b/src/routes/index.tsx
 @@ -15,6 +15,7 @@ import { EmbedChat } from "@/pages/instance/EmbedChat";
@@ -179,45 +161,35 @@ index 31dd36a..a62a2c5 100644
  import { N8n } from "@/pages/instance/N8n";
  import { Openai } from "@/pages/instance/Openai";
  import { Proxy } from "@/pages/instance/Proxy";
-@@ -280,6 +281,16 @@ const router = createBrowserRouter([
+@@ -50,6 +51,16 @@ const router = createBrowserRouter([
        </ProtectedRoute>
      ),
    },
 +  {
-+    path: "/manager/instance/:instanceId/mcp",
++    path: "/manager/mcp",
 +    element: (
 +      <ProtectedRoute>
-+        <InstanceLayout>
++        <MainLayout>
 +          <Mcp />
-+        </InstanceLayout>
++        </MainLayout>
 +      </ProtectedRoute>
 +    ),
 +  },
    {
-     path: "/manager/instance/:instanceId/proxy",
+     path: "/manager/instance/:instanceId/dashboard",
      element: (
 diff --git a/src/translate/languages/en-US.json b/src/translate/languages/en-US.json
-index f63d13e..eef29c7 100644
+index f63d13e..66a004d 100644
 --- a/src/translate/languages/en-US.json
 +++ b/src/translate/languages/en-US.json
-@@ -87,7 +87,8 @@
-     "documentation": "Documentation",
-     "postman": "Postman",
-     "discord": "Discord",
--    "supportPremium": "Support Premium"
-+    "supportPremium": "Support Premium",
-+    "mcp": "MCP"
-   },
-   "toast": {
-     "instance": {
-@@ -1435,5 +1436,32 @@
+@@ -1435,5 +1435,30 @@
          "title": "Default Settings"
        }
      }
 +  },
 +  "mcp": {
 +    "title": "MCP",
-+    "description": "This Evolution's MCP server: lets Claude (and other MCP clients) manage this instance — connection, settings, webhook, events, profile and privacy.",
++    "description": "One MCP server for this whole Evolution: lets Claude (and other MCP clients) manage the instances — connection, settings, webhook, events, profile and privacy.",
 +    "status": {
 +      "on": "Active",
 +      "off": "Disabled",
@@ -225,8 +197,6 @@ index f63d13e..eef29c7 100644
 +    },
 +    "offHint": "MCP is disabled on this server. Set MCP_ENABLED=true in the Evolution environment and restart.",
 +    "url": "Server URL",
-+    "token": "This instance's token",
-+    "tokenHint": "With the instance token, MCP only sees this instance. The global key (AUTHENTICATION_API_KEY) reaches every instance and can create new ones: don't share it.",
 +    "others": "Other clients",
 +    "claudeCode": "Run in your terminal:",
 +    "claude": {
@@ -239,32 +209,22 @@ index f63d13e..eef29c7 100644
 +    "toolsTitle": "What Claude can do",
 +    "tools": "Read: connection state, settings, proxy, webhook, events, profile and privacy. Write: connect (QR code or pairing code), restart, presence and edit all of the above. Logout and delete require confirming the instance name.",
 +    "safety": "Tokens and passwords are masked in responses. The admin can make MCP read-only (MCP_READ_ONLY) and protect instances from deletion (MCP_PROTECTED_INSTANCES).",
-+    "tokenPlaceholder": "<INSTANCE-TOKEN>",
-+    "tokenHidden": "This server hides tokens (AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false). Use the token returned when the instance was created in place of <INSTANCE-TOKEN> below."
++    "keyPlaceholder": "<YOUR-KEY>",
++    "keyHint": "Replace <YOUR-KEY> with the global key (AUTHENTICATION_API_KEY), which reaches every instance, or with an instance's token, which only sees that instance."
    }
  }
 diff --git a/src/translate/languages/es-ES.json b/src/translate/languages/es-ES.json
-index 1dc881f..d6107a1 100644
+index 1dc881f..6793853 100644
 --- a/src/translate/languages/es-ES.json
 +++ b/src/translate/languages/es-ES.json
-@@ -67,7 +67,8 @@
-     "documentation": "Documentación",
-     "postman": "Postman",
-     "discord": "Discord",
--    "supportPremium": "Soporte Premium"
-+    "supportPremium": "Soporte Premium",
-+    "mcp": "MCP"
-   },
-   "toast": {
-     "instance": {
-@@ -1415,5 +1416,32 @@
+@@ -1415,5 +1415,30 @@
          "title": "Configuraciones Predeterminadas"
        }
      }
 +  },
 +  "mcp": {
 +    "title": "MCP",
-+    "description": "This Evolution's MCP server: lets Claude (and other MCP clients) manage this instance — connection, settings, webhook, events, profile and privacy.",
++    "description": "One MCP server for this whole Evolution: lets Claude (and other MCP clients) manage the instances — connection, settings, webhook, events, profile and privacy.",
 +    "status": {
 +      "on": "Active",
 +      "off": "Disabled",
@@ -272,8 +232,6 @@ index 1dc881f..d6107a1 100644
 +    },
 +    "offHint": "MCP is disabled on this server. Set MCP_ENABLED=true in the Evolution environment and restart.",
 +    "url": "Server URL",
-+    "token": "This instance's token",
-+    "tokenHint": "With the instance token, MCP only sees this instance. The global key (AUTHENTICATION_API_KEY) reaches every instance and can create new ones: don't share it.",
 +    "others": "Other clients",
 +    "claudeCode": "Run in your terminal:",
 +    "claude": {
@@ -286,32 +244,22 @@ index 1dc881f..d6107a1 100644
 +    "toolsTitle": "What Claude can do",
 +    "tools": "Read: connection state, settings, proxy, webhook, events, profile and privacy. Write: connect (QR code or pairing code), restart, presence and edit all of the above. Logout and delete require confirming the instance name.",
 +    "safety": "Tokens and passwords are masked in responses. The admin can make MCP read-only (MCP_READ_ONLY) and protect instances from deletion (MCP_PROTECTED_INSTANCES).",
-+    "tokenPlaceholder": "<INSTANCE-TOKEN>",
-+    "tokenHidden": "This server hides tokens (AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false). Use the token returned when the instance was created in place of <INSTANCE-TOKEN> below."
++    "keyPlaceholder": "<YOUR-KEY>",
++    "keyHint": "Replace <YOUR-KEY> with the global key (AUTHENTICATION_API_KEY), which reaches every instance, or with an instance's token, which only sees that instance."
    }
  }
 diff --git a/src/translate/languages/fr-FR.json b/src/translate/languages/fr-FR.json
-index 7b36399..15041b0 100644
+index 7b36399..d406e33 100644
 --- a/src/translate/languages/fr-FR.json
 +++ b/src/translate/languages/fr-FR.json
-@@ -66,7 +66,8 @@
-     "documentation": "Documentation",
-     "postman": "Postman",
-     "discord": "Discord",
--    "supportPremium": "Support Premium"
-+    "supportPremium": "Support Premium",
-+    "mcp": "MCP"
-   },
-   "toast": {
-     "instance": {
-@@ -1414,5 +1415,32 @@
+@@ -1414,5 +1414,30 @@
          "title": "Paramètres par Défaut"
        }
      }
 +  },
 +  "mcp": {
 +    "title": "MCP",
-+    "description": "This Evolution's MCP server: lets Claude (and other MCP clients) manage this instance — connection, settings, webhook, events, profile and privacy.",
++    "description": "One MCP server for this whole Evolution: lets Claude (and other MCP clients) manage the instances — connection, settings, webhook, events, profile and privacy.",
 +    "status": {
 +      "on": "Active",
 +      "off": "Disabled",
@@ -319,8 +267,6 @@ index 7b36399..15041b0 100644
 +    },
 +    "offHint": "MCP is disabled on this server. Set MCP_ENABLED=true in the Evolution environment and restart.",
 +    "url": "Server URL",
-+    "token": "This instance's token",
-+    "tokenHint": "With the instance token, MCP only sees this instance. The global key (AUTHENTICATION_API_KEY) reaches every instance and can create new ones: don't share it.",
 +    "others": "Other clients",
 +    "claudeCode": "Run in your terminal:",
 +    "claude": {
@@ -333,32 +279,22 @@ index 7b36399..15041b0 100644
 +    "toolsTitle": "What Claude can do",
 +    "tools": "Read: connection state, settings, proxy, webhook, events, profile and privacy. Write: connect (QR code or pairing code), restart, presence and edit all of the above. Logout and delete require confirming the instance name.",
 +    "safety": "Tokens and passwords are masked in responses. The admin can make MCP read-only (MCP_READ_ONLY) and protect instances from deletion (MCP_PROTECTED_INSTANCES).",
-+    "tokenPlaceholder": "<INSTANCE-TOKEN>",
-+    "tokenHidden": "This server hides tokens (AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false). Use the token returned when the instance was created in place of <INSTANCE-TOKEN> below."
++    "keyPlaceholder": "<YOUR-KEY>",
++    "keyHint": "Replace <YOUR-KEY> with the global key (AUTHENTICATION_API_KEY), which reaches every instance, or with an instance's token, which only sees that instance."
    }
  }
 diff --git a/src/translate/languages/pt-BR.json b/src/translate/languages/pt-BR.json
-index 7943d44..adbc7aa 100644
+index 7943d44..df72901 100644
 --- a/src/translate/languages/pt-BR.json
 +++ b/src/translate/languages/pt-BR.json
-@@ -67,7 +67,8 @@
-     "documentation": "Documentação",
-     "postman": "Postman",
-     "discord": "Discord",
--    "supportPremium": "Suporte Premium"
-+    "supportPremium": "Suporte Premium",
-+    "mcp": "MCP"
-   },
-   "toast": {
-     "instance": {
-@@ -1415,5 +1416,32 @@
+@@ -1415,5 +1415,30 @@
          "title": "Configurações Padrão"
        }
      }
 +  },
 +  "mcp": {
 +    "title": "MCP",
-+    "description": "Servidor MCP desta Evolution: deixa o Claude (e outros clientes MCP) gerenciar esta instância — conexão, configurações, webhook, eventos, perfil e privacidade.",
++    "description": "Um servidor MCP para esta Evolution inteira: deixa o Claude (e outros clientes MCP) gerenciar as instâncias — conexão, configurações, webhook, eventos, perfil e privacidade.",
 +    "status": {
 +      "on": "Ativo",
 +      "off": "Desligado",
@@ -366,8 +302,6 @@ index 7943d44..adbc7aa 100644
 +    },
 +    "offHint": "O MCP está desligado neste servidor. Defina MCP_ENABLED=true nas variáveis de ambiente da Evolution e reinicie.",
 +    "url": "URL do servidor",
-+    "token": "Token desta instância",
-+    "tokenHint": "Com o token da instância, o MCP só enxerga esta instância. A chave global (AUTHENTICATION_API_KEY) dá acesso a todas e permite criar instâncias: não a compartilhe.",
 +    "others": "Outros clientes",
 +    "claudeCode": "Rode no terminal:",
 +    "claude": {
@@ -380,7 +314,7 @@ index 7943d44..adbc7aa 100644
 +    "toolsTitle": "O que o Claude pode fazer",
 +    "tools": "Ler: estado da conexão, configurações, proxy, webhook, eventos, perfil e privacidade. Escrever: conectar (QR code ou código de pareamento), reiniciar, presença e editar tudo isso. Desconectar e excluir exigem confirmar o nome da instância.",
 +    "safety": "Tokens e senhas saem mascarados nas respostas. O administrador pode deixar o MCP só leitura (MCP_READ_ONLY) e proteger instâncias contra exclusão (MCP_PROTECTED_INSTANCES).",
-+    "tokenPlaceholder": "<TOKEN-DA-INSTANCIA>",
-+    "tokenHidden": "Este servidor não mostra tokens (AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false). Use o token devolvido quando a instância foi criada no lugar de <TOKEN-DA-INSTANCIA> abaixo."
++    "keyPlaceholder": "<SUA-CHAVE>",
++    "keyHint": "Troque <SUA-CHAVE> pela chave global (AUTHENTICATION_API_KEY), que dá acesso a todas as instâncias, ou pelo token de uma instância, que só enxerga ela."
    }
  }

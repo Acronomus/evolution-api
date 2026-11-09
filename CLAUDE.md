@@ -80,7 +80,7 @@ Regras:
 - O SDK v2 do MCP exige zod 4, e o `openai@4` do upstream pede zod 3 como peer: o zod 4 entra
   pelo alias `zod4` (`import * as z from 'zod4'`). Não troque por `zod`.
 - **Manager**: `manager/dist` é build do submódulo `evolution-manager-v2` (upstream, commit fixado)
-  com os patches de `manager-patches/` (ex.: a aba MCP). Mudou a tela? Edite no submódulo, regrave o
+  com os patches de `manager-patches/` (ex.: a página MCP). Mudou a tela? Edite no submódulo, regrave o
   patch (`git -C evolution-manager-v2 diff > manager-patches/NNNN-....patch`), rode
   `scripts/build-manager.sh` e commite `manager/dist` e o patch. Não commite o ponteiro do submódulo
   sem querer subir o manager do upstream.
