@@ -7,7 +7,7 @@
  * - a query string não troca a instância autenticada pelo path (cbcc7ce2).
  */
 import { prismaRepository, waMonitor } from '@api/server.module';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api, GLOBAL_KEY } from './helpers/app';
 import { resetDb, settle } from './helpers/db';
@@ -15,6 +15,9 @@ import { sockets } from './helpers/fakeBaileys';
 import { connectOpen, connectWithQr, createInstance } from './helpers/instances';
 
 beforeEach(resetDb);
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('POST /instance/create', () => {
   it('cria a instância no banco e devolve o token', async () => {
@@ -152,11 +155,51 @@ describe('DELETE /instance/logout e /instance/delete', () => {
     socket.logout.mockRejectedValueOnce(new Error('Connection Closed'));
 
     const res = await (await api()).delete('/instance/delete/loja-a').set(GLOBAL_KEY);
-    await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(res.status).toBe(200);
-    expect(waMonitor.waInstances['loja-a']).toBeUndefined();
-    expect(await prismaRepository.instance.findUnique({ where: { name: 'loja-a' } })).toBeNull();
+    await vi.waitFor(
+      async () => {
+        expect(waMonitor.waInstances['loja-a']).toBeUndefined();
+        expect(await prismaRepository.instance.findUnique({ where: { name: 'loja-a' } })).toBeNull();
+      },
+      { timeout: 5000, interval: 20 },
+    );
+  });
+});
+
+describe('limpeza ao remover a instância', () => {
+  const emitter = () => (waMonitor as any).eventEmitter;
+
+  it('cleaningUp não estoura se a instância some entre o find e o update', async () => {
+    vi.spyOn(prismaRepository.instance, 'findFirst').mockResolvedValueOnce({ id: 'sumiu-id', name: 'sumiu' } as any);
+
+    await expect(waMonitor.cleaningUp('sumiu')).resolves.toBeUndefined();
+  });
+
+  it('remove.instance só apaga os dados depois do cleaningUp terminar', async () => {
+    await createInstance('loja-a');
+    let finish = () => {};
+    const cleaningUp = vi
+      .spyOn(waMonitor, 'cleaningUp')
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+    const cleaningStoreData = vi.spyOn(waMonitor, 'cleaningStoreData');
+
+    emitter().emit('remove.instance', 'loja-a', 'inner');
+    await vi.waitFor(() => expect(cleaningUp).toHaveBeenCalled());
+    expect(cleaningStoreData).not.toHaveBeenCalled();
+
+    finish();
+    await vi.waitFor(() => expect(cleaningStoreData).toHaveBeenCalledWith('loja-a'));
+  });
+
+  it('falha na limpeza não deixa a instância presa em memória', async () => {
+    await createInstance('loja-a');
+    const cleaningUp = vi.spyOn(waMonitor, 'cleaningUp').mockRejectedValueOnce(new Error('falhou'));
+
+    emitter().emit('remove.instance', 'loja-a', 'inner');
+
+    await vi.waitFor(() => expect(cleaningUp).toHaveBeenCalled());
+    await vi.waitFor(() => expect(waMonitor.waInstances['loja-a']).toBeUndefined());
   });
 });
 

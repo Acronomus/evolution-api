@@ -164,15 +164,17 @@ export class WAMonitoringService {
       });
 
       if (findInstance) {
-        const instance = await this.prismaRepository.instance.update({
+        // updateMany: a instância pode ter sido apagada entre o find e aqui (remove.instance e
+        // logout.instance rodam em paralelo), e o update estouraria P2025.
+        await this.prismaRepository.instance.updateMany({
           where: { name: instanceName },
           data: { connectionStatus: 'close' },
         });
 
-        rmSync(join(INSTANCE_DIR, instance.id), { recursive: true, force: true });
+        rmSync(join(INSTANCE_DIR, findInstance.id), { recursive: true, force: true });
 
-        instanceDbId = instance.id;
-        await this.prismaRepository.session.deleteMany({ where: { sessionId: instance.id } });
+        instanceDbId = findInstance.id;
+        await this.prismaRepository.session.deleteMany({ where: { sessionId: findInstance.id } });
       }
     }
 
@@ -396,16 +398,17 @@ export class WAMonitoringService {
 
         this.clearDelInstanceTime(instanceName);
 
-        this.cleaningUp(instanceName);
-        this.cleaningStoreData(instanceName);
+        // Sai da memória antes da limpeza: uma falha no banco não pode deixar a entrada zumbi.
+        delete this.waInstances[instanceName];
+
+        // Em sequência: o cleaningStoreData apaga a linha que o cleaningUp atualiza.
+        await this.cleaningUp(instanceName);
+        await this.cleaningStoreData(instanceName);
+      } catch (error) {
+        delete this.waInstances[instanceName];
+        this.logger.error({ localError: 'remove.instance', instanceName, error });
       } finally {
         this.logger.warn(`Instance "${instanceName}" - REMOVED`);
-      }
-
-      try {
-        delete this.waInstances[instanceName];
-      } catch (error) {
-        this.logger.error(error);
       }
     });
     this.eventEmitter.on('logout.instance', async (instanceName: string) => {
@@ -418,7 +421,9 @@ export class WAMonitoringService {
           this.waInstances[instanceName]?.clearCacheChatwoot();
         }
 
-        this.cleaningUp(instanceName);
+        await this.cleaningUp(instanceName);
+      } catch (error) {
+        this.logger.error({ localError: 'logout.instance', instanceName, error });
       } finally {
         this.logger.warn(`Instance "${instanceName}" - LOGOUT`);
       }
