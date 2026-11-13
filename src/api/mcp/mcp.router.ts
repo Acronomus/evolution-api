@@ -53,7 +53,6 @@ export function createMcpRouter(): Router {
         protectedInstances: mcp.PROTECTED_INSTANCES,
         showSecrets: mcp.SHOW_SECRETS,
         globalKey: authInfo!.extra?.globalKey === true,
-        logs: mcp.LOGS_ENABLED,
       });
     },
     {

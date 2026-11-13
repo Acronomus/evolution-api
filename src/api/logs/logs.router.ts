@@ -1,13 +1,13 @@
 /**
  * `GET /logs` (build próprio da Acronomus): consulta o buffer de stdout/stderr, como um
- * `docker logs --tail N --since X | grep`. Só a chave global; desligado por padrão
- * (MCP_LOGS_ENABLED). É a rota que a ferramenta `evolution_logs` do MCP chama por loopback.
+ * `docker logs --tail N --since X | grep`. Só a chave global. É a rota que a ferramenta
+ * `evolution_logs` do MCP chama por loopback.
  *
- * Query: `tail` (padrão 200, máx. 2000), `since` (ISO ou 30s/10m/2h/1d), `grep`, `regex=true`,
+ * Query: `tail` (padrão 200, sem máximo), `since` (ISO ou 30s/10m/2h/1d), `grep`, `regex=true`,
  * `instance`, `level` (ERROR,WARN...), `stream` (stdout|stderr).
  */
 import { requestKey } from '@api/mcp/mcp.router';
-import { Auth, configService, Mcp } from '@config/env.config';
+import { Auth, configService } from '@config/env.config';
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 
@@ -25,14 +25,13 @@ export function createLogsRouter(): Router {
   const router = Router();
 
   router.get(LOGS_PATH, (req: Request, res: Response) => {
-    const buffer = logBuffer();
-    if (!configService.get<Mcp>('MCP').LOGS_ENABLED || !buffer)
-      return fail(res, 404, 'Not Found', 'Consulta de logs desligada (MCP_LOGS_ENABLED)');
-
     const key = requestKey(req);
     if (!key) return fail(res, 401, 'Unauthorized', 'Envie a apikey global');
     if (key !== configService.get<Auth>('AUTHENTICATION').API_KEY.KEY)
       return fail(res, 403, 'Forbidden', 'Os logs são do servidor inteiro: só a chave global consulta');
+
+    const buffer = logBuffer();
+    if (!buffer) return fail(res, 503, 'Service Unavailable', 'Captura de logs não instalada');
 
     const q: LogQuery = {};
     try {

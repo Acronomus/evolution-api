@@ -15,8 +15,6 @@ export interface McpToolsOptions {
   showSecrets: boolean;
   /** A chave de quem chama é a global (vê e cria instâncias); senão é o token de uma instância. */
   globalKey: boolean;
-  /** Registra `evolution_logs` (MCP_LOGS_ENABLED); só aparece para a chave global. */
-  logs?: boolean;
 }
 
 export const EVENTS = [
@@ -278,7 +276,7 @@ export function createMcpServer(client: EvolutionClient, config: McpToolsOptions
     run(({ instanceName }) => client.request('GET', `/chat/fetchPrivacySettings/${enc(instanceName)}`)),
   );
 
-  if (config.logs && config.globalKey) {
+  if (config.globalKey) {
     server.registerTool(
       'evolution_logs',
       {
@@ -292,9 +290,8 @@ export function createMcpServer(client: EvolutionClient, config: McpToolsOptions
             .number()
             .int()
             .min(1)
-            .max(2000)
             .optional()
-            .describe('Últimas N linhas depois dos filtros (padrão 200)'),
+            .describe('Últimas N linhas depois dos filtros (padrão 200, sem máximo)'),
           since: z.string().optional().describe('ISO (2026-11-13T10:00:00Z) ou relativo: 30s, 10m, 2h, 1d'),
           grep: z.string().optional().describe('Texto procurado (sem diferenciar maiúsculas)'),
           regex: z.boolean().optional().describe('Trata o grep como expressão regular'),

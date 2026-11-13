@@ -2,7 +2,7 @@
  * Buffer de logs (src/api/logs/log.buffer.ts) e mascaramento de texto (redactText): a base do
  * `GET /logs` e da ferramenta `evolution_logs` do MCP.
  */
-import { installLogCapture, LogBuffer, MAX_LINE_CHARS, MAX_TAIL, parseSince } from '@api/logs/log.buffer';
+import { installLogCapture, LogBuffer, MAX_LINE_CHARS, parseSince } from '@api/logs/log.buffer';
 import { MASK, redactText } from '@api/mcp/mcp.redact';
 import { describe, expect, it } from 'vitest';
 
@@ -43,12 +43,12 @@ describe('LogBuffer', () => {
     expect(r.buffered).toBe(3);
   });
 
-  it('tail devolve as últimas N depois dos filtros e respeita o máximo', () => {
+  it('tail devolve as últimas N depois dos filtros, sem máximo', () => {
     const b = new LogBuffer(5000);
     for (let i = 1; i <= 3000; i++) b.write('stdout', `l${i}\n`);
     expect(b.query({ tail: 2 }).lines.map((l) => l.text)).toEqual(['l2999', 'l3000']);
     expect(b.query().lines).toHaveLength(200);
-    expect(b.query({ tail: 99_999 }).lines).toHaveLength(MAX_TAIL);
+    expect(b.query({ tail: 99_999 }).lines).toHaveLength(3000);
     expect(b.query({ tail: 2, grep: 'l1' }).lines.map((l) => l.text)).toEqual(['l1998', 'l1999']);
     expect(b.query({ grep: 'l1' }).matched).toBe(1111);
   });

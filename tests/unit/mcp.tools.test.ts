@@ -72,7 +72,7 @@ describe('lista de ferramentas', () => {
     const { client } = await setup({});
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
-    expect(tools).toHaveLength(25);
+    expect(tools).toHaveLength(26);
     expect(byName.evolution_instance_list.annotations?.readOnlyHint).toBe(true);
     expect(byName.evolution_instance_create.annotations?.readOnlyHint).toBe(false);
     expect(byName.evolution_instance_delete.annotations?.destructiveHint).toBe(true);
@@ -89,7 +89,7 @@ describe('lista de ferramentas', () => {
   it('modo read registra só ferramentas de leitura', async () => {
     const { client } = await setup({}, { readOnly: true });
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(10);
+    expect(tools.length).toBe(11);
     expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
   });
 });
@@ -338,19 +338,18 @@ describe('evolution_logs', () => {
     oldest: '2026-11-13T09:00:00.000Z',
   };
 
-  it('só aparece com MCP_LOGS_ENABLED e chave global, também no modo read', async () => {
+  it('só aparece para a chave global, também no modo read', async () => {
     const names = async (cfg: Partial<McpToolsOptions>) =>
       (await (await setup({}, cfg)).client.listTools()).tools.map((t) => t.name);
-    expect(await names({})).not.toContain('evolution_logs');
-    expect(await names({ logs: true, globalKey: false })).not.toContain('evolution_logs');
-    expect(await names({ logs: true })).toContain('evolution_logs');
-    expect(await names({ logs: true, readOnly: true })).toContain('evolution_logs');
+    expect(await names({ globalKey: false })).not.toContain('evolution_logs');
+    expect(await names({})).toContain('evolution_logs');
+    expect(await names({ readOnly: true })).toContain('evolution_logs');
   });
 
   it('repassa os filtros para GET /logs e devolve as linhas como terminal, mascaradas', async () => {
-    const { call, calls } = await setup({ 'GET /logs': { body: logs } }, { logs: true });
+    const { call, calls } = await setup({ 'GET /logs': { body: logs } });
     const r = await call('evolution_logs', {
-      tail: 50,
+      tail: 50_000,
       since: '10m',
       grep: 'falh',
       instanceName: 'loja a',
@@ -360,7 +359,7 @@ describe('evolution_logs', () => {
     expect(r.isError).toBeFalsy();
     const qs = new URLSearchParams(calls[0].path.split('?')[1]);
     expect(Object.fromEntries(qs)).toEqual({
-      tail: '50',
+      tail: '50000',
       since: '10m',
       grep: 'falh',
       instance: 'loja a',
@@ -374,14 +373,13 @@ describe('evolution_logs', () => {
   });
 
   it('mostra segredos com MCP_SHOW_SECRETS e repassa o erro da rota', async () => {
-    const ok = await setup({ 'GET /logs': { body: logs } }, { logs: true, showSecrets: true });
+    const ok = await setup({ 'GET /logs': { body: logs } }, { showSecrets: true });
     expect((await ok.call('evolution_logs')).data).toContain('ABC123');
     expect(ok.calls[0].path).toBe('/logs');
 
-    const bad = await setup(
-      { 'GET /logs': { status: 400, body: { status: 400, response: { message: ['regex inválido: x'] } } } },
-      { logs: true },
-    );
+    const bad = await setup({
+      'GET /logs': { status: 400, body: { status: 400, response: { message: ['regex inválido: x'] } } },
+    });
     const r = await bad.call('evolution_logs', { grep: '(', regex: true });
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain('regex inválido');

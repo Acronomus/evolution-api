@@ -72,7 +72,7 @@ describe('POST /mcp: autenticação', () => {
 
   it('aceita a chave em Authorization: Bearer', async () => {
     const client = await connect({ authorization: `Bearer ${TEST_API_KEY}` });
-    expect((await client.listTools()).tools.length).toBe(25);
+    expect((await client.listTools()).tools.length).toBe(26);
   });
 
   it('desligado (MCP_ENABLED=false) responde 404', async () => {

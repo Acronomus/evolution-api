@@ -3,12 +3,11 @@
  * stdout/stderr. O buffer é instalado em streams falsos, para o teste escrever as linhas.
  */
 import { installLogCapture } from '@api/logs/log.buffer';
-import { configService } from '@config/env.config';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { api, getApp, GLOBAL_KEY } from './helpers/app';
 import { resetDb } from './helpers/db';
@@ -26,17 +25,7 @@ const LINES = [
 LINES.forEach((l) => out.write(l));
 err.write('Error: boom\n    at foo (x.ts:1)\n');
 
-const setLogs = (enabled: boolean) => {
-  const get = configService.get.bind(configService);
-  vi.spyOn(configService, 'get').mockImplementation(((key: string) =>
-    key === 'MCP' ? { ...get('MCP' as any), LOGS_ENABLED: enabled } : get(key as any)) as any);
-};
-
-beforeEach(async () => {
-  await resetDb();
-  setLogs(true);
-});
-afterEach(() => vi.restoreAllMocks());
+beforeEach(resetDb);
 
 describe('GET /logs', () => {
   it('devolve as últimas linhas, com filtros', async () => {
@@ -81,12 +70,6 @@ describe('GET /logs', () => {
     expect((await http_.get('/logs')).status).toBe(401);
     expect((await http_.get('/logs').set({ apikey: token })).status).toBe(403);
     expect((await http_.get('/logs').set({ apikey: 'chave-errada' })).status).toBe(403);
-  });
-
-  it('desligado (MCP_LOGS_ENABLED=false) responde 404', async () => {
-    vi.restoreAllMocks();
-    setLogs(false);
-    expect((await (await api()).get('/logs').set(GLOBAL_KEY)).status).toBe(404);
   });
 });
 

@@ -4,7 +4,7 @@
  *
  * Captura o próprio stdout/stderr: guarda o mesmo que o `docker logs` mostra (Logger, baileys/pino,
  * console.log solto, stack traces), sem cores ANSI. Fica só em memória: zera a cada restart e cada
- * réplica tem o seu. Ligado por MCP_LOGS_ENABLED.
+ * réplica tem o seu. Sempre ligado: o main.ts instala a captura no boot.
  */
 
 export type LogStream = 'stdout' | 'stderr';
@@ -42,7 +42,8 @@ export interface LogResult {
 }
 
 export const DEFAULT_TAIL = 200;
-export const MAX_TAIL = 2000;
+/** Linhas guardadas (as mais antigas saem primeiro). */
+export const BUFFER_LINES = 20_000;
 /** Linha maior que isso é cortada (um objeto gigante logado não ocupa o buffer sozinho). */
 export const MAX_LINE_CHARS = 4000;
 
@@ -103,7 +104,7 @@ export class LogBuffer {
 
   /** Lança erro com mensagem legível se o regex for inválido. */
   query(q: LogQuery = {}): LogResult {
-    const tail = Math.min(Math.max(1, Math.floor(q.tail ?? DEFAULT_TAIL)), MAX_TAIL);
+    const tail = Math.max(1, Math.floor(q.tail ?? DEFAULT_TAIL));
     let pattern: RegExp | undefined;
     if (q.grep) {
       try {
@@ -154,7 +155,7 @@ type Writable = { write: (...args: any[]) => boolean };
 
 let installed: LogBuffer | undefined;
 
-/** O buffer instalado no processo, se o MCP_LOGS_ENABLED ligou a captura. */
+/** O buffer instalado no processo (undefined antes do boot, e nos testes que não instalam). */
 export const logBuffer = (): LogBuffer | undefined => installed;
 
 /**
