@@ -346,7 +346,7 @@ describe('evolution_logs', () => {
     expect(await names({ readOnly: true })).toContain('evolution_logs');
   });
 
-  it('repassa os filtros para GET /logs e devolve as linhas como terminal, mascaradas', async () => {
+  it('repassa os filtros para GET /logs e devolve as linhas como terminal, sem máscara', async () => {
     const { call, calls } = await setup({ 'GET /logs': { body: logs } });
     const r = await call('evolution_logs', {
       tail: 50_000,
@@ -368,13 +368,12 @@ describe('evolution_logs', () => {
     });
     expect(r.data).toContain('2 de 7 linha(s)');
     expect(r.data).toContain('2026-11-13T10:00:01.000Z [stderr] Error: boom');
-    expect(r.data).not.toContain('ABC123');
-    expect(r.data).toContain(MASK);
+    expect(r.data).toContain('apikey: ABC123');
   });
 
-  it('mostra segredos com MCP_SHOW_SECRETS e repassa o erro da rota', async () => {
-    const ok = await setup({ 'GET /logs': { body: logs } }, { showSecrets: true });
-    expect((await ok.call('evolution_logs')).data).toContain('ABC123');
+  it('sem filtros chama GET /logs puro e repassa o erro da rota', async () => {
+    const ok = await setup({ 'GET /logs': { body: logs } });
+    await ok.call('evolution_logs');
     expect(ok.calls[0].path).toBe('/logs');
 
     const bad = await setup({

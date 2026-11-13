@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod4';
 
 import { EvolutionClient, EvolutionError } from './mcp.client';
-import { redact, redactText } from './mcp.redact';
+import { redact } from './mcp.redact';
 
 export const MCP_VERSION = '0.3.0';
 
@@ -325,7 +325,7 @@ export function createMcpServer(client: EvolutionClient, config: McpToolsOptions
           (r.oldest ? ` desde ${r.oldest}` : ' (vazio)');
         const body = r.lines.map((l) => `${l.time}${l.stream === 'stderr' ? ' [stderr]' : ''} ${l.text}`).join('\n');
         const text = body ? `${head}\n\n${body}` : head;
-        return { content: [{ type: 'text', text: config.showSecrets ? text : redactText(text) }] };
+        return { content: [{ type: 'text', text }] };
       }),
     );
   }

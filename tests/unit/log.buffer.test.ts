@@ -1,9 +1,8 @@
 /**
- * Buffer de logs (src/api/logs/log.buffer.ts) e mascaramento de texto (redactText): a base do
+ * Buffer de logs (src/api/logs/log.buffer.ts): a base do
  * `GET /logs` e da ferramenta `evolution_logs` do MCP.
  */
 import { installLogCapture, LogBuffer, MAX_LINE_CHARS, parseSince } from '@api/logs/log.buffer';
-import { MASK, redactText } from '@api/mcp/mcp.redact';
 import { describe, expect, it } from 'vitest';
 
 const clock = (start = 1_000) => {
@@ -118,18 +117,5 @@ describe('installLogCapture', () => {
     expect(err).toEqual(['falhou\n']);
     expect(b.query().lines.map((l) => l.text)).toEqual(['oi', 'falhou']);
     expect(installLogCapture(99, streams)).toBe(b);
-  });
-});
-
-describe('redactText', () => {
-  it('mascara apikey, token, senha e Bearer em texto livre', () => {
-    const t = redactText(
-      `{ apikey: 'ABC123', "token":"T-1", password=segredo } authorization: Bearer eyJ.x-y headers: { Authorization: 'Bearer zzz' }`,
-    );
-    for (const s of ['ABC123', 'T-1', 'segredo', 'eyJ.x-y', 'zzz']) expect(t).not.toContain(s);
-    expect(t).toContain(MASK);
-  });
-  it('não mexe no resto', () => {
-    expect(redactText('Connection Closed loja-a')).toBe('Connection Closed loja-a');
   });
 });

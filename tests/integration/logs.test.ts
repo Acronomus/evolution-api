@@ -95,14 +95,14 @@ describe('ferramenta evolution_logs pelo /mcp', () => {
     return client;
   };
 
-  it('chave global consulta os logs, com segredos mascarados', async () => {
+  it('chave global consulta os logs como estão, sem máscara', async () => {
     const client = await connect(GLOBAL_KEY);
     const r: any = await client.callTool({ name: 'evolution_logs', arguments: { level: ['ERROR'] } });
     expect(r.isError).toBeFalsy();
     const text = r.content[0].text as string;
     expect(text).toContain('1 de 1 linha(s)');
     expect(text).toContain('Connection Closed');
-    expect(text).not.toContain('SEGREDO');
+    expect(text).toContain("apikey: 'SEGREDO'");
   });
 
   it('token de instância não recebe a ferramenta', async () => {
