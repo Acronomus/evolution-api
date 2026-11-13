@@ -685,11 +685,14 @@ export class BaileysStartupService extends ChannelStartupService {
     const socketConfig: UserFacingSocketConfig = {
       ...options,
       version,
-      logger: P({ level: this.logBaileys }),
+      logger: P({ level: this.logBaileys }, process.stdout),
       printQRInTerminal: false,
       auth: {
         creds: this.instance.authState.state.creds,
-        keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({ level: 'error' }) as any),
+        keys: makeCacheableSignalKeyStore(
+          this.instance.authState.state.keys,
+          P({ level: 'error' }, process.stdout) as any,
+        ),
       },
       msgRetryCounterCache: this.msgRetryCounterCache,
       generateHighQualityLinkPreview: true,
@@ -1531,7 +1534,10 @@ export class BaileysStartupService extends ChannelStartupService {
                   { key: received.key, message: received?.message },
                   'buffer',
                   this.mediaDownloadOptions,
-                  { logger: P({ level: 'error' }) as any, reuploadRequest: this.client.updateMediaMessage },
+                  {
+                    logger: P({ level: 'error' }, process.stdout) as any,
+                    reuploadRequest: this.client.updateMediaMessage,
+                  },
                 );
 
                 if (buffer) {
@@ -1542,7 +1548,10 @@ export class BaileysStartupService extends ChannelStartupService {
                     { key: received.key, message: received?.message },
                     'buffer',
                     this.mediaDownloadOptions,
-                    { logger: P({ level: 'error' }) as any, reuploadRequest: this.client.updateMediaMessage },
+                    {
+                      logger: P({ level: 'error' }, process.stdout) as any,
+                      reuploadRequest: this.client.updateMediaMessage,
+                    },
                   );
 
                   if (buffer) {
@@ -2609,7 +2618,7 @@ export class BaileysStartupService extends ChannelStartupService {
               { key: messageRaw.key, message: messageRaw?.message },
               'buffer',
               this.mediaDownloadOptions,
-              { logger: P({ level: 'error' }) as any, reuploadRequest: this.client.updateMediaMessage },
+              { logger: P({ level: 'error' }, process.stdout) as any, reuploadRequest: this.client.updateMediaMessage },
             );
 
             if (buffer) {
@@ -2620,7 +2629,10 @@ export class BaileysStartupService extends ChannelStartupService {
                 { key: messageRaw.key, message: messageRaw?.message },
                 'buffer',
                 this.mediaDownloadOptions,
-                { logger: P({ level: 'error' }) as any, reuploadRequest: this.client.updateMediaMessage },
+                {
+                  logger: P({ level: 'error' }, process.stdout) as any,
+                  reuploadRequest: this.client.updateMediaMessage,
+                },
               );
 
               if (buffer) {
@@ -3991,7 +4003,7 @@ export class BaileysStartupService extends ChannelStartupService {
           { key: msg?.key, message: msg?.message },
           'buffer',
           this.mediaDownloadOptions,
-          { logger: P({ level: 'error' }) as any, reuploadRequest: this.client.updateMediaMessage },
+          { logger: P({ level: 'error' }, process.stdout) as any, reuploadRequest: this.client.updateMediaMessage },
         );
       } catch {
         this.logger.error('Download Media failed, trying to retry in 5 seconds...');

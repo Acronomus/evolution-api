@@ -326,3 +326,64 @@ describe('destrutivas', () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe('evolution_logs', () => {
+  const logs = {
+    lines: [
+      { time: '2026-11-13T10:00:00.000Z', stream: 'stdout', text: 'ERROR [Webhook] falhou apikey: ABC123' },
+      { time: '2026-11-13T10:00:01.000Z', stream: 'stderr', text: 'Error: boom' },
+    ],
+    matched: 7,
+    buffered: 500,
+    oldest: '2026-11-13T09:00:00.000Z',
+  };
+
+  it('só aparece com MCP_LOGS_ENABLED e chave global, também no modo read', async () => {
+    const names = async (cfg: Partial<McpToolsOptions>) =>
+      (await (await setup({}, cfg)).client.listTools()).tools.map((t) => t.name);
+    expect(await names({})).not.toContain('evolution_logs');
+    expect(await names({ logs: true, globalKey: false })).not.toContain('evolution_logs');
+    expect(await names({ logs: true })).toContain('evolution_logs');
+    expect(await names({ logs: true, readOnly: true })).toContain('evolution_logs');
+  });
+
+  it('repassa os filtros para GET /logs e devolve as linhas como terminal, mascaradas', async () => {
+    const { call, calls } = await setup({ 'GET /logs': { body: logs } }, { logs: true });
+    const r = await call('evolution_logs', {
+      tail: 50,
+      since: '10m',
+      grep: 'falh',
+      instanceName: 'loja a',
+      level: ['ERROR', 'WARN'],
+      stream: 'stdout',
+    });
+    expect(r.isError).toBeFalsy();
+    const qs = new URLSearchParams(calls[0].path.split('?')[1]);
+    expect(Object.fromEntries(qs)).toEqual({
+      tail: '50',
+      since: '10m',
+      grep: 'falh',
+      instance: 'loja a',
+      level: 'ERROR,WARN',
+      stream: 'stdout',
+    });
+    expect(r.data).toContain('2 de 7 linha(s)');
+    expect(r.data).toContain('2026-11-13T10:00:01.000Z [stderr] Error: boom');
+    expect(r.data).not.toContain('ABC123');
+    expect(r.data).toContain(MASK);
+  });
+
+  it('mostra segredos com MCP_SHOW_SECRETS e repassa o erro da rota', async () => {
+    const ok = await setup({ 'GET /logs': { body: logs } }, { logs: true, showSecrets: true });
+    expect((await ok.call('evolution_logs')).data).toContain('ABC123');
+    expect(ok.calls[0].path).toBe('/logs');
+
+    const bad = await setup(
+      { 'GET /logs': { status: 400, body: { status: 400, response: { message: ['regex inválido: x'] } } } },
+      { logs: true },
+    );
+    const r = await bad.call('evolution_logs', { grep: '(', regex: true });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('regex inválido');
+  });
+});

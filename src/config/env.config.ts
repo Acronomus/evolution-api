@@ -371,6 +371,10 @@ export type Mcp = {
   PROTECTED_INSTANCES: string[];
   /** Mostra tokens e senhas nas respostas (padrão: mascarados). */
   SHOW_SECRETS: boolean;
+  /** Guarda o stdout/stderr em memória e libera `GET /logs` e a ferramenta `evolution_logs`. */
+  LOGS_ENABLED: boolean;
+  /** Linhas guardadas no buffer de logs. */
+  LOGS_BUFFER_LINES: number;
 };
 
 export type Proxy = {
@@ -901,6 +905,8 @@ export class ConfigService {
           .map((s) => s.trim())
           .filter(Boolean),
         SHOW_SECRETS: process.env?.MCP_SHOW_SECRETS === 'true',
+        LOGS_ENABLED: process.env?.MCP_LOGS_ENABLED === 'true',
+        LOGS_BUFFER_LINES: Number.parseInt(process.env?.MCP_LOGS_BUFFER_LINES ?? '', 10) || 10000,
       },
       PROXY: {
         HOST: process.env?.PROXY_HOST,

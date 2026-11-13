@@ -75,6 +75,10 @@ Regras:
   `Authorization: Bearer`). Cada ferramenta chama a própria API REST por loopback com essa chave,
   então quem autoriza são os guards: a chave global vê e cria instâncias; o token de uma instância só
   passa nas rotas dela. `MCP_READ_ONLY`, `MCP_PROTECTED_INSTANCES` e `MCP_SHOW_SECRETS` no `env.example`.
+- Logs: com `MCP_LOGS_ENABLED=true` o `main.ts` passa a copiar o stdout/stderr para um buffer em
+  memória (`src/api/logs/`, `MCP_LOGS_BUFFER_LINES`), consultado por `GET /logs` (só a chave global)
+  e pela ferramenta `evolution_logs` (`tail`, `since`, `grep`, `level`, `instanceName`). Zera no
+  restart. Os `pino` da baileys escrevem em `process.stdout` para entrar no buffer.
 - Ferramenta nova → teste em `tests/unit/mcp.tools.test.ts`; caminho HTTP e autorização em
   `tests/integration/mcp.test.ts`.
 - O SDK v2 do MCP exige zod 4, e o `openai@4` do upstream pede zod 3 como peer: o zod 4 entra

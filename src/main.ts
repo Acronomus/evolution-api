@@ -2,10 +2,11 @@
 import '@utils/instrumentSentry';
 
 // Now import other modules
+import { installLogCapture } from '@api/logs/log.buffer';
 import { ProviderFiles } from '@api/provider/sessions';
 import { PrismaRepository } from '@api/repository/repository.service';
 import { eventManager, waMonitor } from '@api/server.module';
-import { configService, HttpServer, ProviderSession, Sentry as SentryConfig } from '@config/env.config';
+import { configService, HttpServer, Mcp, ProviderSession, Sentry as SentryConfig } from '@config/env.config';
 import { onUnexpectedError } from '@config/error.config';
 import { Logger } from '@config/logger.config';
 import * as Sentry from '@sentry/node';
@@ -18,6 +19,9 @@ async function initWA() {
 }
 
 async function bootstrap() {
+  const mcp = configService.get<Mcp>('MCP');
+  if (mcp.LOGS_ENABLED) installLogCapture(mcp.LOGS_BUFFER_LINES);
+
   const logger = new Logger('SERVER');
 
   let providerFiles: ProviderFiles = null;

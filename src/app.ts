@@ -1,3 +1,4 @@
+import { createLogsRouter } from '@api/logs/logs.router';
 import { createMcpRouter } from '@api/mcp/mcp.router';
 import { HttpStatus, router } from '@api/routes/index.router';
 import { Auth, configService, Cors, HttpServer, Webhook } from '@config/env.config';
@@ -47,6 +48,7 @@ export function createApp(): Express {
 
   app.use('/', router);
   app.use(createMcpRouter());
+  app.use(createLogsRouter());
 
   app.use(
     (err: Error, req: Request, res: Response, next: NextFunction) => {

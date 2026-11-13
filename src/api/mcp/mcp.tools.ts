@@ -2,9 +2,9 @@ import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod4';
 
 import { EvolutionClient, EvolutionError } from './mcp.client';
-import { redact } from './mcp.redact';
+import { redact, redactText } from './mcp.redact';
 
-export const MCP_VERSION = '0.2.0';
+export const MCP_VERSION = '0.3.0';
 
 export interface McpToolsOptions {
   /** Só ferramentas de leitura. */
@@ -15,6 +15,8 @@ export interface McpToolsOptions {
   showSecrets: boolean;
   /** A chave de quem chama é a global (vê e cria instâncias); senão é o token de uma instância. */
   globalKey: boolean;
+  /** Registra `evolution_logs` (MCP_LOGS_ENABLED); só aparece para a chave global. */
+  logs?: boolean;
 }
 
 export const EVENTS = [
@@ -275,6 +277,61 @@ export function createMcpServer(client: EvolutionClient, config: McpToolsOptions
     },
     run(({ instanceName }) => client.request('GET', `/chat/fetchPrivacySettings/${enc(instanceName)}`)),
   );
+
+  if (config.logs && config.globalKey) {
+    server.registerTool(
+      'evolution_logs',
+      {
+        title: 'Logs do servidor',
+        description:
+          'Últimas linhas do stdout/stderr do servidor, como `docker logs --tail N --since X | grep`: ' +
+          'Logger da Evolution, baileys e stack traces, sem cores. Só desde o último restart e só desta réplica. ' +
+          'Para achar um problema, comece com level=ERROR,WARN ou grep e aumente o tail se precisar.',
+        inputSchema: z.object({
+          tail: z
+            .number()
+            .int()
+            .min(1)
+            .max(2000)
+            .optional()
+            .describe('Últimas N linhas depois dos filtros (padrão 200)'),
+          since: z.string().optional().describe('ISO (2026-11-13T10:00:00Z) ou relativo: 30s, 10m, 2h, 1d'),
+          grep: z.string().optional().describe('Texto procurado (sem diferenciar maiúsculas)'),
+          regex: z.boolean().optional().describe('Trata o grep como expressão regular'),
+          instanceName: z.string().optional().describe('Só linhas da instância ([nome] no log)'),
+          level: z
+            .array(z.enum(['ERROR', 'WARN', 'INFO', 'LOG', 'DEBUG', 'VERBOSE', 'DARK']))
+            .optional()
+            .describe('Níveis do Logger; linhas da baileys e stack traces não têm nível'),
+          stream: z.enum(['stdout', 'stderr']).optional(),
+        }),
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      run(async ({ tail, since, grep, regex, instanceName, level, stream }) => {
+        const qs = new URLSearchParams();
+        if (tail) qs.set('tail', String(tail));
+        if (since) qs.set('since', since);
+        if (grep) qs.set('grep', grep);
+        if (regex) qs.set('regex', 'true');
+        if (instanceName) qs.set('instance', instanceName);
+        if (level?.length) qs.set('level', level.join(','));
+        if (stream) qs.set('stream', stream);
+        const q = qs.toString();
+        const r = await client.request<{
+          lines: { time: string; stream: string; text: string }[];
+          matched: number;
+          buffered: number;
+          oldest: string | null;
+        }>('GET', `/logs${q ? `?${q}` : ''}`);
+        const head =
+          `${r.lines.length} de ${r.matched} linha(s) encontradas; buffer com ${r.buffered}` +
+          (r.oldest ? ` desde ${r.oldest}` : ' (vazio)');
+        const body = r.lines.map((l) => `${l.time}${l.stream === 'stderr' ? ' [stderr]' : ''} ${l.text}`).join('\n');
+        const text = body ? `${head}\n\n${body}` : head;
+        return { content: [{ type: 'text', text: config.showSecrets ? text : redactText(text) }] };
+      }),
+    );
+  }
 
   if (config.readOnly) return server;
 

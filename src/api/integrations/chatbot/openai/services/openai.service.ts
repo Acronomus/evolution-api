@@ -705,7 +705,7 @@ export class OpenaiService extends BaseChatbotService<OpenaiBot, OpenaiSetting> 
         'buffer',
         {},
         {
-          logger: P({ level: 'error' }) as any,
+          logger: P({ level: 'error' }, process.stdout) as any,
           reuploadRequest: instance,
         },
       );

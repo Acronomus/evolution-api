@@ -17,3 +17,12 @@ export function redact<T>(value: T): T {
   }
   return value;
 }
+
+// Em texto livre (linhas de log): `apikey: 'x'`, `"token":"x"`, `password=x`, `Bearer x`.
+const SECRET_PAIR =
+  /((?:token|password|passwd|secret|apikey|api_key|hash|authorization)["']?\s*[:=]\s*["']?)(?!\[oculto\])([^\s"',}\]]+)/gi;
+const BEARER = /(Bearer\s+)(?!\[oculto\])[\w.~+/=-]+/gi;
+
+export function redactText(text: string): string {
+  return text.replace(BEARER, `$1${MASK}`).replace(SECRET_PAIR, `$1${MASK}`);
+}
