@@ -80,6 +80,7 @@ import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import { Boom } from '@hapi/boom';
 import { createId as cuid } from '@paralleldrive/cuid2';
 import { Instance, Message } from '@prisma/client';
+import { baileysLogger } from '@utils/baileysLogger';
 import { createJid } from '@utils/createJid';
 import { fetchLatestWaWebVersion } from '@utils/fetchLatestWaWebVersion';
 import { makeProxyAgent, makeProxyAgentUndici } from '@utils/makeProxyAgent';
@@ -249,7 +250,6 @@ export class BaileysStartupService extends ChannelStartupService {
   private readonly msgRetryCounterCache: CacheStore = new NodeCache();
   private readonly userDevicesCache: CacheStore = new NodeCache({ stdTTL: 300000, useClones: false });
   private endSession = false;
-  private logBaileys = this.configService.get<Log>('LOG').BAILEYS;
   private eventProcessingQueue: Promise<void> = Promise.resolve();
   private lastStream515At = 0;
 
@@ -685,7 +685,7 @@ export class BaileysStartupService extends ChannelStartupService {
     const socketConfig: UserFacingSocketConfig = {
       ...options,
       version,
-      logger: P({ level: this.logBaileys }, process.stdout),
+      logger: baileysLogger(this.configService.get<Log>('LOG'), this.instance.name),
       printQRInTerminal: false,
       auth: {
         creds: this.instance.authState.state.creds,

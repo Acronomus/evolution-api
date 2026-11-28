@@ -27,6 +27,8 @@ export type Log = {
   LEVEL: LogLevel[];
   COLOR: boolean;
   BAILEYS: LogBaileys;
+  BAILEYS_INSTANCES: string[];
+  BAILEYS_INSTANCES_LEVEL: LogBaileys;
 };
 
 export type ProviderSession = {
@@ -748,6 +750,11 @@ export class ConfigService {
           (['ERROR', 'WARN', 'DEBUG', 'INFO', 'LOG', 'VERBOSE', 'DARK', 'WEBHOOKS', 'WEBSOCKET'] as LogLevel[]),
         COLOR: process.env?.LOG_COLOR === 'true',
         BAILEYS: (process.env?.LOG_BAILEYS as LogBaileys) || 'error',
+        BAILEYS_INSTANCES: (process.env?.LOG_BAILEYS_INSTANCES || '')
+          .split(',')
+          .map((n) => n.trim())
+          .filter(Boolean),
+        BAILEYS_INSTANCES_LEVEL: (process.env?.LOG_BAILEYS_INSTANCES_LEVEL as LogBaileys) || 'debug',
       },
       DEL_INSTANCE: isBooleanString(process.env?.DEL_INSTANCE)
         ? process.env.DEL_INSTANCE === 'true'
