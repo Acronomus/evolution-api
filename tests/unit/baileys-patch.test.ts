@@ -21,6 +21,8 @@ describe('patch da baileys', () => {
     expect(socket).toContain('CB:notification,type:companion_reg_refresh');
     const recv = fs.readFileSync(path.join(BAILEYS, 'lib/Socket/messages-recv.js'), 'utf8');
     expect(recv).toContain("getBinaryNodeChildBuffer(linkCodeCompanionReg, 'primary_identity_pub')");
+    // sinal do detector de saúde (src/utils/instanceHealth.ts)
+    expect(recv).toContain("ev.emit('pdo.no-response'");
   });
 
   it('companion_reg_refresh rotaciona o segredo e redesenha o QR sem gastar ref', async () => {

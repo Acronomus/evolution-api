@@ -42,3 +42,10 @@ Ambas ainda não mergeadas.
 do arquivo está preso à versão (`baileys+7.0.0-rc14`), então o próximo bump da
 Baileys faz o `patch-package` falhar em voz alta em vez de aplicar algo errado —
 é o sinal para reavaliar, não para forçar.
+
+### Evento `pdo.no-response` (detector de saúde)
+
+Além do pareamento, o patch faz a `messages-recv.js` emitir `pdo.no-response` quando um pedido de reenvio ao
+celular (PDO) fica 8 s sem resposta. A Baileys só registra isso em `debug` (some com `LOG_BAILEYS=error`); o
+`src/utils/instanceHealth.ts` conta o evento para o alerta `celular_offline` (5 em 30 min). O teste
+`tests/unit/baileys-patch.test.ts` confere que o patch está aplicado.

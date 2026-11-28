@@ -49,6 +49,7 @@ export const EVENTS = [
   'INSTANCE_CREATE',
   'INSTANCE_DELETE',
   'STATUS_INSTANCE',
+  'INSTANCE_HEALTH',
 ] as const;
 
 /** Integrações de evento que usam o mesmo formato `{ <tipo>: { enabled, events } }`. */

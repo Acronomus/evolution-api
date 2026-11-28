@@ -167,5 +167,6 @@ export class EventController {
     'INSTANCE_CREATE',
     'INSTANCE_DELETE',
     'STATUS_INSTANCE',
+    'INSTANCE_HEALTH',
   ];
 }

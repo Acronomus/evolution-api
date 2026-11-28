@@ -225,6 +225,7 @@ export type EventsWebhook = {
   CALL: boolean;
   TYPEBOT_START: boolean;
   TYPEBOT_CHANGE_STATUS: boolean;
+  INSTANCE_HEALTH: boolean;
   ERRORS: boolean;
   ERRORS_WEBHOOK: string;
 };
@@ -798,6 +799,7 @@ export class ConfigService {
           CALL: process.env?.WEBHOOK_EVENTS_CALL === 'true',
           TYPEBOT_START: process.env?.WEBHOOK_EVENTS_TYPEBOT_START === 'true',
           TYPEBOT_CHANGE_STATUS: process.env?.WEBHOOK_EVENTS_TYPEBOT_CHANGE_STATUS === 'true',
+          INSTANCE_HEALTH: process.env?.WEBHOOK_EVENTS_INSTANCE_HEALTH === 'true',
           ERRORS: process.env?.WEBHOOK_EVENTS_ERRORS === 'true',
           ERRORS_WEBHOOK: process.env?.WEBHOOK_EVENTS_ERRORS_WEBHOOK || '',
         },

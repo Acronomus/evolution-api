@@ -156,6 +156,19 @@ if (metricsConfig.ENABLED) {
       );
     }
 
+    // saúde da conexão (src/utils/instanceHealth.ts): 1 na linha do estado atual
+    lines.push('# HELP evolution_instance_health Instance health detector state (1 = current estado)');
+    lines.push('# TYPE evolution_instance_health gauge');
+    for (const [name, instance] of instanceEntries) {
+      const health = (instance as any)?.health?.snapshot?.();
+      if (!health) continue;
+      for (const estado of ['ok', 'travada', 'quedas_repetidas', 'celular_offline']) {
+        lines.push(
+          `evolution_instance_health{instance="${escapeLabel(name)}",estado="${estado}"} ${health.estado === estado ? 1 : 0}`,
+        );
+      }
+    }
+
     res.send(lines.join('\n') + '\n');
   });
 }

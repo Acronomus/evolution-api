@@ -1,8 +1,17 @@
 diff --git a/node_modules/baileys/lib/Socket/messages-recv.js b/node_modules/baileys/lib/Socket/messages-recv.js
-index f2003ac..25e607d 100644
+index f2003ac..570cff2 100644
 --- a/node_modules/baileys/lib/Socket/messages-recv.js
 +++ b/node_modules/baileys/lib/Socket/messages-recv.js
-@@ -880,6 +880,7 @@ export const makeMessagesRecvSocket = (config) => {
+@@ -82,6 +82,8 @@ export const makeMessagesRecvSocket = (config) => {
+         setTimeout(async () => {
+             if (await placeholderResendCache.get(messageKey?.id)) {
+                 logger.debug({ messageKey }, 'PDO message without response after 8 seconds. Phone possibly offline');
++                // evolution: expõe o sinal como evento (o log acima é debug e some em produção)
++                ev.emit('pdo.no-response', { messageKey });
+                 await placeholderResendCache.del(messageKey?.id);
+             }
+         }, 8000);
+@@ -880,6 +882,7 @@ export const makeMessagesRecvSocket = (config) => {
                  break;
              case 'link_code_companion_reg':
                  const linkCodeCompanionReg = getBinaryNodeChild(node, 'link_code_companion_reg');
@@ -10,7 +19,7 @@ index f2003ac..25e607d 100644
                  const ref = toRequiredBuffer(getBinaryNodeChildBuffer(linkCodeCompanionReg, 'link_code_pairing_ref'));
                  const primaryIdentityPublicKey = toRequiredBuffer(getBinaryNodeChildBuffer(linkCodeCompanionReg, 'primary_identity_pub'));
                  const primaryEphemeralPublicKeyWrapped = toRequiredBuffer(getBinaryNodeChildBuffer(linkCodeCompanionReg, 'link_code_pairing_wrapped_primary_ephemeral_pub'));
-@@ -1624,6 +1625,11 @@ export const makeMessagesRecvSocket = (config) => {
+@@ -1624,6 +1627,11 @@ export const makeMessagesRecvSocket = (config) => {
      ws.on('CB:ack,class:message', (node) => {
          handleBadAck(node).catch(error => onUnexpectedError(error, 'handling bad ack'));
      });

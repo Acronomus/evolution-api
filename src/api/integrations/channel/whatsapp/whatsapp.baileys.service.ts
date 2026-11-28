@@ -83,6 +83,7 @@ import { Instance, Message } from '@prisma/client';
 import { baileysLogger } from '@utils/baileysLogger';
 import { createJid } from '@utils/createJid';
 import { fetchLatestWaWebVersion } from '@utils/fetchLatestWaWebVersion';
+import { InstanceHealth } from '@utils/instanceHealth';
 import { makeProxyAgent, makeProxyAgentUndici } from '@utils/makeProxyAgent';
 import { getOnWhatsappCache, saveOnWhatsappCache } from '@utils/onWhatsappCache';
 import { status } from '@utils/renderStatus';
@@ -253,6 +254,22 @@ export class BaileysStartupService extends ChannelStartupService {
   private eventProcessingQueue: Promise<void> = Promise.resolve();
   private lastStream515At = 0;
 
+  /** Detector de saúde da conexão (src/utils/instanceHealth.ts); alerta por webhook, log e /metrics. */
+  public readonly health = new InstanceHealth(() => this.instance.name, {
+    reconnect: async () => {
+      if (!this.client) return;
+      // Mesmo caminho do restart(): 515 faz o connectionUpdate reconectar uma única vez
+      // (o connectToWhatsapp encerra o socket anterior), sem criar um segundo socket.
+      await this.client.end(
+        new Boom('Instance stalled: offline sync not finished', { statusCode: DisconnectReason.restartRequired }),
+      );
+    },
+    onChange: (event) => {
+      void this.sendDataWebhook(Events.INSTANCE_HEALTH, event);
+    },
+    warn: (message) => this.logger.warn(message),
+  });
+
   // Depois de um `stream:error` 515 ("restart needed") o WhatsApp costuma fechar a
   // conexão com `loggedOut` — que ali NÃO é logout de verdade, é o sinal de restart.
   // Qualquer close que chegue dentro desta janela conta como consequência do 515.
@@ -344,7 +361,15 @@ export class BaileysStartupService extends ChannelStartupService {
     };
   }
 
-  private async connectionUpdate({ qr, connection, lastDisconnect }: Partial<ConnectionState>) {
+  private async connectionUpdate({
+    qr,
+    connection,
+    lastDisconnect,
+    receivedPendingNotifications,
+  }: Partial<ConnectionState>) {
+    this.health.start();
+    this.health.onConnectionUpdate({ connection, lastDisconnect, receivedPendingNotifications });
+
     if (qr) {
       if (this.instance.qrcode.count === this.configService.get<QrCode>('QRCODE').LIMIT) {
         this.sendDataWebhook(Events.QRCODE_UPDATED, {
@@ -483,6 +508,7 @@ export class BaileysStartupService extends ChannelStartupService {
           );
         }
 
+        this.health.dispose();
         this.eventEmitter.emit('logout.instance', this.instance.name, 'inner');
         this.client?.ws?.close();
         this.client.end(new Error('Close connection'));
@@ -2003,6 +2029,10 @@ export class BaileysStartupService extends ChannelStartupService {
 
             if (events['connection.update']) {
               this.connectionUpdate(events['connection.update']);
+            }
+
+            if ((events as any)['pdo.no-response']) {
+              this.health.onPdoNoResponse();
             }
 
             if (events['creds.update']) {
