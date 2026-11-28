@@ -1,5 +1,5 @@
 diff --git a/node_modules/baileys/lib/Socket/messages-recv.js b/node_modules/baileys/lib/Socket/messages-recv.js
-index f2003ac..1f72102 100644
+index f2003ac..25e607d 100644
 --- a/node_modules/baileys/lib/Socket/messages-recv.js
 +++ b/node_modules/baileys/lib/Socket/messages-recv.js
 @@ -880,6 +880,7 @@ export const makeMessagesRecvSocket = (config) => {
@@ -10,8 +10,20 @@ index f2003ac..1f72102 100644
                  const ref = toRequiredBuffer(getBinaryNodeChildBuffer(linkCodeCompanionReg, 'link_code_pairing_ref'));
                  const primaryIdentityPublicKey = toRequiredBuffer(getBinaryNodeChildBuffer(linkCodeCompanionReg, 'primary_identity_pub'));
                  const primaryEphemeralPublicKeyWrapped = toRequiredBuffer(getBinaryNodeChildBuffer(linkCodeCompanionReg, 'link_code_pairing_wrapped_primary_ephemeral_pub'));
+@@ -1624,6 +1625,11 @@ export const makeMessagesRecvSocket = (config) => {
+     ws.on('CB:ack,class:message', (node) => {
+         handleBadAck(node).catch(error => onUnexpectedError(error, 'handling bad ack'));
+     });
++    // WhatsApp now delivers some contacts' statuses as a top-level <status> stanza. Without an ack the
++    // server closes the stream about 50 min later (stream:error ack class=status). (WhiskeySockets/Baileys#2858)
++    ws.on('CB:status', (node) => {
++        sendMessageAck(node).catch(error => onUnexpectedError(error, 'acking status stanza'));
++    });
+     ev.on('call', async ([call]) => {
+         if (!call) {
+             return;
 diff --git a/node_modules/baileys/lib/Socket/socket.js b/node_modules/baileys/lib/Socket/socket.js
-index ae34a8f..944188d 100644
+index ae34a8f..0652688 100644
 --- a/node_modules/baileys/lib/Socket/socket.js
 +++ b/node_modules/baileys/lib/Socket/socket.js
 @@ -6,7 +6,7 @@ import { proto } from '../../WAProto/index.js';
@@ -23,7 +35,31 @@ index ae34a8f..944188d 100644
  import { assertNodeErrorFree, binaryNodeToString, encodeBinaryNode, getAllBinaryNodeChildren, getBinaryNodeChild, getBinaryNodeChildren, isLidUser, jidDecode, jidEncode, S_WHATSAPP_NET } from '../WABinary/index.js';
  import { BinaryInfo } from '../WAM/BinaryInfo.js';
  import { USyncQuery, USyncUser } from '../WAUSync/index.js';
-@@ -690,6 +690,9 @@ export const makeSocket = (config) => {
+@@ -274,6 +274,7 @@ export const makeSocket = (config) => {
+     let keepAliveReq;
+     let qrTimer;
+     let closed = false;
++    let offlineTimer;
+     const socketEndHandlers = [];
+     /** log & process any unexpected errors */
+     const onUnexpectedError = (err, msg) => {
+@@ -444,6 +445,7 @@ export const makeSocket = (config) => {
+             lastDateRecv = new Date();
+             let anyTriggered = false;
+             anyTriggered = ws.emit('frame', frame);
++            countOfflineStanza(frame);
+             // if it's a binary node
+             if (!(frame instanceof Uint8Array)) {
+                 const msgId = frame.attrs.id;
+@@ -478,6 +480,7 @@ export const makeSocket = (config) => {
+         logger.info({ trace: error?.stack }, error ? 'connection errored' : 'connection closed');
+         clearInterval(keepAliveReq);
+         clearTimeout(qrTimer);
++        clearInterval(offlineTimer);
+         ws.removeAllListeners('close');
+         ws.removeAllListeners('open');
+         ws.removeAllListeners('message');
+@@ -690,6 +693,9 @@ export const makeSocket = (config) => {
      ws.on('close', () => void end(new Boom('Connection Terminated', { statusCode: DisconnectReason.connectionClosed })));
      // the server terminated the connection
      ws.on('CB:xmlstreamend', () => void end(new Boom('Connection Terminated by Server', { statusCode: DisconnectReason.connectionClosed })));
@@ -33,7 +69,7 @@ index ae34a8f..944188d 100644
      // QR gen
      ws.on('CB:iq,type:set,pair-device', async (stanza) => {
          const iq = {
-@@ -705,25 +708,40 @@ export const makeSocket = (config) => {
+@@ -705,25 +711,40 @@ export const makeSocket = (config) => {
          const refNodes = getBinaryNodeChildren(pairDeviceNode, 'ref');
          const noiseKeyB64 = Buffer.from(creds.noiseKey.public).toString('base64');
          const identityKeyB64 = Buffer.from(creds.signedIdentityKey.public).toString('base64');
@@ -80,6 +116,75 @@ index ae34a8f..944188d 100644
      // device paired for the first time
      // if device pairs successfully, the server asks to restart the connection
      ws.on('CB:iq,,pair-success', async (stanza) => {
+@@ -802,13 +823,54 @@ export const makeSocket = (config) => {
+     ws.on('CB:ib,,downgrade_webclient', () => {
+         void end(new Boom('Multi-device beta not joined', { statusCode: DisconnectReason.multideviceMismatch }));
+     });
++    // The offline catch-up comes in batches: the server sends one batch per 'offline_batch' request and
++    // holds everything after it, live messages included, until asked again. Keep asking until the
++    // 'offline' node marks the end: after every 100 stanzas carrying the 'offline' attribute, and every
++    // 10 s while the end has not come. (WhiskeySockets/Baileys#2926)
++    let offlineStanzas = 0;
++    let offlineDone = false;
++    const requestOfflineBatch = async (reason) => {
++        if (closed || offlineDone) {
++            return;
++        }
++        offlineStanzas = 0;
++        logger.debug({ reason }, 'requesting offline batch');
++        try {
++            await sendNode({
++                tag: 'ib',
++                attrs: {},
++                content: [{ tag: 'offline_batch', attrs: { count: '100' } }]
++            });
++        }
++        catch (error) {
++            logger.warn({ error }, 'failed to request offline batch');
++        }
++    };
++    // called from onMessageReceived (not a 'frame' listener, which would mark every frame as handled)
++    const countOfflineStanza = (frame) => {
++        if (offlineDone || frame instanceof Uint8Array || frame.attrs?.offline === undefined) {
++            return;
++        }
++        offlineStanzas += 1;
++        if (offlineStanzas >= 100) {
++            void requestOfflineBatch('100 offline stanzas received');
++        }
++    };
+     ws.on('CB:ib,,offline_preview', async (node) => {
+         logger.info('offline preview received', JSON.stringify(node));
+-        await sendNode({
+-            tag: 'ib',
+-            attrs: {},
+-            content: [{ tag: 'offline_batch', attrs: { count: '100' } }]
+-        });
++        await requestOfflineBatch('offline preview');
++        // the socket may have closed, or the catch-up ended, while the request was being sent
++        if (closed || offlineDone) {
++            return;
++        }
++        clearInterval(offlineTimer);
++        offlineTimer = setInterval(() => {
++            if (closed || offlineDone) {
++                clearInterval(offlineTimer);
++                return;
++            }
++            void requestOfflineBatch('offline catch-up not finished yet');
++        }, 10000);
+     });
+     ws.on('CB:ib,,edge_routing', (node) => {
+         const edgeRoutingNode = getBinaryNodeChild(node, 'edge_routing');
+@@ -830,6 +892,8 @@ export const makeSocket = (config) => {
+     });
+     // called when all offline notifs are handled
+     ws.on('CB:ib,,offline', (node) => {
++        offlineDone = true;
++        clearInterval(offlineTimer);
+         const child = getBinaryNodeChild(node, 'offline');
+         const offlineNotifs = +(child?.attrs.count || 0);
+         logger.info(`handled ${offlineNotifs} offline messages/notifications`);
 diff --git a/node_modules/baileys/lib/Utils/companion-reg-client-utils.d.ts b/node_modules/baileys/lib/Utils/companion-reg-client-utils.d.ts
 index a79a52c..3bc161c 100644
 --- a/node_modules/baileys/lib/Utils/companion-reg-client-utils.d.ts
